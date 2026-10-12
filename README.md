@@ -1,136 +1,105 @@
 # SoloCast
 
-Un petit site de streaming pour une seule personne : un streameur diffuse, les spectateurs
-regardent et discutent dans le chat. Il y a un lecteur vidéo, un chat en temps réel, et une file
-de demandes de parole pour inviter un spectateur sur scène. L'interface est volontairement
-habillée comme un site du début des années 2000.
+A simple streaming site designed for a single user: a streamer broadcasts, viewers watch, and everyone participates in the chat. It features a video player, a real-time chat, and a queue for viewers who want to be invited on screen. The interface is intentionally styled to resemble websites from the early 2000s.
 
-Je l'ai fait pour diffuser à un petit groupe de gens, pas pour être une plateforme générale.
-Pas de comptes, pas de base de données : un pseudo suffit pour entrer.
+This was created for broadcasting to a small group of people, not as a general-purpose platform. There are no accounts or databases; a simple username is all that's needed to join.
 
-![Page d'accueil](docs/img/accueil.png)
+![Homepage](docs/img/accueil.png)
 
-## Ce que ça montre
+## Features
 
-La page de visionnage : lecteur, chat, bouton pour demander la parole.
+The viewing page: video player, chat, and a button to request to speak.
 
-![Page de visionnage](docs/img/watch.png)
+![Viewing Page](docs/img/watch.png)
 
-Le studio du streameur : diffusion navigateur ou OBS, réglages de capture, compteurs, file des
-demandes de parole avec Allow / Ban, et le chat en lecture seule pour modérer.
+The streamer's studio: browser-based or OBS streaming, capture settings, counters, a queue for viewers requesting to speak (with options to allow or ban), and a read-only chat for moderation.
 
-![Studio du streameur](docs/img/studio.png)
+![Streamer Studio](docs/img/studio.png)
 
-Les captures viennent du mode mock (`NEXT_PUBLIC_BACKEND_MODE=mock`), donc le lecteur y est
-« offline » : il n'y a pas de vrai flux vidéo derrière.
+The screenshots are from the mock mode (`NEXT_PUBLIC_BACKEND_MODE=mock`), so the video player is "offline": there's no actual video stream behind it.
 
-## Organisation du code
+## Code Organization
 
-Monorepo pnpm :
+Monorepo using pnpm:
 
-- `apps/web` : le front, en Next.js
-- `apps/backend` : l'API et le WebSocket du chat, en Fastify
-- `packages/shared` : les contrats Zod partagés entre les deux
+- `apps/web`: The frontend, built with Next.js.
+- `apps/backend`: The API and the chat's WebSocket server, built with Fastify.
+- `packages/shared`: Shared Zod contracts used by both the frontend and backend.
 
-## Prérequis
+## Prerequisites
 
-- Node >= 20 (testé en 26)
+- Node >= 20 (tested with 26)
 - pnpm 9 (`npm i -g pnpm@9.15.9`)
-- Docker : uniquement pour la vidéo WebRTC (LiveKit), cf. §Vidéo
-- `cloudflared` : uniquement pour `./start.sh` (adresse publique partageable)
+- Docker: Only required for WebRTC video (LiveKit), see the "Video" section.
+- `cloudflared`: Only required for `./start.sh` (to provide a shareable public address).
 
-## Démarrage local
+## Local Setup
 
 ```sh
 pnpm install
-cp .env.example .env          # un .env local est déjà présent ici
+cp .env.example .env          # A local .env file is already provided here
 pnpm dev
 ```
 
-- Front : http://localhost:3001 (choix du pseudo, puis `/watch`)
-- Studio streameur : http://localhost:3001/studio (aucune clé : qui ouvre la page prend le studio)
-- Backend : http://localhost:3000 (`GET /health`)
+- Frontend: http://localhost:3001 (username selection, then `/watch`)
+- Streamer Studio: http://localhost:3001/studio (no key required: whoever opens the page gets the studio)
+- Backend: http://localhost:3000 (`GET /health`)
 
-Fonctionnent sans Docker : identité viewer, chat WebSocket, présence, demande de parole,
-modération. `STATE_BACKEND=memory` garde tout l'état dans le process backend : **aucun Redis à
-lancer**. L'état est perdu à chaque redémarrage, ce qui est voulu en local.
+Functions without Docker: viewer identity, WebSocket chat, presence detection, request to speak, and moderation. `STATE_BACKEND=memory` keeps all the state within the backend process: **no Redis is needed**. The state is lost on each restart, which is intentional for local development.
 
-## Partager en un script (`./start.sh`)
+## Sharing with a Script (`./start.sh`)
 
 ```sh
 ./start.sh
 ```
 
-Lance le backend (3000), le front (3001), un reverse proxy mono-origine (8080, `scripts/share-proxy.mjs`)
-et un tunnel `cloudflared`, puis affiche l'adresse publique :
+This starts the backend (3000), the frontend (3001), a single-origin reverse proxy (8080, `scripts/share-proxy.mjs`), and a `cloudflared` tunnel, then displays the public address:
 
 ```
-Adresse à partager : https://<mots-au-hasard>.trycloudflare.com
+Address to share: https://<random-words>.trycloudflare.com
 ```
 
-Ctrl+C arrête les quatre processus ; les journaux restent dans `.run/`. Prérequis en plus :
-`cloudflared` installé.
+Ctrl+C stops all four processes; logs are saved in `.run/`. Additional prerequisite: `cloudflared` must be installed.
 
-**L'adresse est publique et sans mot de passe** : quiconque l'ouvre regarde le direct, écrit dans
-le chat, et peut ouvrir `/studio` pour diffuser et modérer. À ne partager
-qu'avec des gens de confiance, et à couper après usage — un tunnel rapide Cloudflare change
-d'adresse à chaque lancement.
+**The address is public and password-free:** Anyone who opens it can watch the live stream, participate in the chat, and can open `/studio` to broadcast and moderate. Only share this with trusted individuals, and close it after use – a Cloudflare tunnel changes its address with each launch.
 
-Pourquoi un proxy : le front, l'API et le WebSocket doivent sortir sous **une seule origine**,
-sinon le cookie de session (SameSite=Lax) ne suit pas et l'allowlist CORS ne peut pas couvrir les
-deux domaines. Le script exporte donc `CORS_ORIGIN=<url du tunnel>` et `COOKIE_SECURE=true` avant
-de démarrer le backend, et sert le front avec `NEXT_PUBLIC_API_BASE_URL=""` + `NEXT_PUBLIC_WS_URL=/ws`.
+Why a proxy: The frontend, API, and WebSocket must originate from **a single domain**, otherwise the session cookie (SameSite=Lax) won't be followed, and the CORS allowlist won't be able to cover both domains. The script therefore exports `CORS_ORIGIN=<tunnel URL>` and `COOKIE_SECURE=true` before starting the backend, and serves the frontend with `NEXT_PUBLIC_API_BASE_URL=""` and `NEXT_PUBLIC_WS_URL=/ws`.
 
 ### Configuration
 
-- `.env` (racine) : backend + infrastructure Docker. Lu par `apps/backend` (`--env-file`) et par
-  `docker compose`. Jamais versionné ; le modèle commenté est `.env.example`.
-- `apps/web/.env.local` : variables `NEXT_PUBLIC_*` (Next ne lit que le `.env` de son dossier).
-  `NEXT_PUBLIC_BACKEND_MODE=mock` fait tourner le front seul, sans backend ni LiveKit.
+- `.env` (root): Backend and Docker infrastructure. Read by `apps/backend` (`--env-file`) and by `docker compose`. Never versioned; the commented template is `.env.example`.
+- `apps/web/.env.local`: `NEXT_PUBLIC_*` variables (Next.js only reads the `.env` file from its own directory). Setting `NEXT_PUBLIC_BACKEND_MODE=mock` runs the frontend alone, without the backend or LiveKit.
 
-## Vidéo (LiveKit)
+## Video (LiveKit)
 
-Sans LiveKit, le lecteur reste sur « Stream offline » : le reste de l'app fonctionne. Pour la
-vidéo, lancer le SFU et l'ingress RTMP/WHIP :
+Without LiveKit, the player remains in "Stream offline" mode: the rest of the app functions. To enable video, start the SFU and the RTMP/WHIP ingress:
 
 ```sh
 docker compose up -d redis livekit ingress
 ```
 
-Les clés `LIVEKIT_*` du `.env` servent au SFU, au backend (tokens signés) et à l'ingress OBS
-(`rtmp://localhost:1935/x/<stream-key>`). Ports et budgets : commentaires de `docker-compose.yml`.
+The `LIVEKIT_*` keys in the `.env` file are used by the SFU, the backend (for signed tokens), and the OBS ingress (`rtmp://localhost:1935/x/<stream-key>`). Ports and budgets are documented in `docker-compose.yml`.
 
-Le drapeau « direct » de `presence:update` vaut `true` uniquement quand le SFU signale le
-streameur via le webhook `participant_joined` (bloc `webhook` du `LIVEKIT_CONFIG` de
-`docker-compose.yml`, pointant sur `LIVEKIT_WEBHOOK_URL`). Sans ce webhook,
-le studio affiche quand même ON AIR dès qu'il publie lui-même, et le viewer affiche LIVE dès
-qu'il reçoit la piste : ces informations-là sont locales et certaines. Rien dans l'interface
-n'annonce un direct que le serveur ou le navigateur ne peut pas prouver.
+The "live" flag in `presence:update` is only set to `true` when the SFU signals the streamer via the `participant_joined` webhook (the `webhook` block in the `LIVEKIT_CONFIG` of `docker-compose.yml`, pointing to `LIVEKIT_WEBHOOK_URL`). Without this webhook, the studio will still display "ON AIR" as soon as the streamer starts broadcasting, and the viewer will display "LIVE" as soon as they receive the stream – this information is local and potentially inaccurate. Nothing in the interface indicates a live stream unless the server or the browser can prove it.
 
-**Le webhook ne marche pas avec le `.env` par défaut.** LiveKit tourne dans un conteneur et
-joint l'hôte par `host.docker.internal` (→ la passerelle du pont Docker, p. ex. `172.17.0.1`),
-alors que `BACKEND_HOST=127.0.0.1` ne fait écouter le backend que sur la boucle locale. Pour
-l'activer :
+**The webhook will not work with the default `.env` file.** LiveKit runs in a container and connects to the host using `host.docker.internal` (which is the Docker bridge gateway, e.g., `172.17.0.1`), while `BACKEND_HOST=127.0.0.1` only makes the backend listen on the local loopback interface. To enable it:
 
 ```sh
-BACKEND_HOST=0.0.0.0 pnpm dev            # le backend écoute aussi sur le pont Docker
-sudo ufw allow in on docker0 to any port 3000   # si un pare-feu tourne (ufw, firewalld…)
+BACKEND_HOST=0.0.0.0 pnpm dev            # The backend also listens on the Docker bridge
+sudo ufw allow in on docker0 to any port 3000   # If a firewall is running (ufw, firewalld…)
 ```
 
-`BACKEND_HOST=0.0.0.0` expose le backend à tout le réseau local : à réserver à une machine de
-développement de confiance. Sans ce réglage, seule la jauge « direct » du studio reste à
-`OFFLINE` ; le chat, la présence et la vidéo côté viewer fonctionnent normalement.
+`BACKEND_HOST=0.0.0.0` exposes the backend to the entire local network: this should only be used on a trusted development machine. Without this setting, only the "live" indicator in the studio remains at `OFFLINE`; the chat, presence, and video on the viewer side function normally.
 
-## Qualité
+## Quality
 
 ```sh
-pnpm lint         # ESLint (flat config racine, typage strict)
-pnpm typecheck    # tsc --noEmit sur les 3 packages
+pnpm lint         # ESLint (root flat config, strict typing)
+pnpm typecheck    # tsc --noEmit on the 3 packages
 pnpm test         # Vitest (184 tests)
 pnpm format       # Prettier
 pnpm build        # shared + backend (tsc) + web (next build)
 ```
 
-E2E Playwright (front seul, backend mock) : `pnpm --filter @solocast/web test:e2e` — 8 tests
-(parcours viewer + studio), verts. Le serveur de test est lancé par Playwright sur le port 3101
-en `NEXT_PUBLIC_BACKEND_MODE=mock` : ni backend ni LiveKit requis.
+E2E Playwright (frontend only, backend mocked): `pnpm --filter @solocast/web test:e2e` — 8 tests
+(viewer walkthrough + studio), all passing. The test server is started by Playwright on port 3101 with `NEXT_PUBLIC_BACKEND_MODE=mock`: neither the backend nor LiveKit is required.
