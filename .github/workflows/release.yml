@@ -49,8 +49,141 @@ jobs:
           name: solocast-installers
           path: dist/release/*
 
-  publish:
+  # Installe VRAIMENT l'installeur Windows sur une machine Windows, le lance comme le fait le
+  # raccourci du menu, exerce l'app, la quitte, puis désinstalle (y compris pendant qu'elle tourne).
+  smoke-windows:
     needs: package
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: solocast-installers
+          path: installers
+
+      - name: Installation silencieuse
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem installers -Filter 'SoloCast-Setup-*.exe' | Select-Object -First 1).FullName
+          $p = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installeur : code de sortie $($p.ExitCode)" }
+          $dir = Join-Path $env:LOCALAPPDATA 'SoloCast'
+          foreach ($f in 'node.exe','livekit-server.exe','cloudflared.exe','solocast.mjs','solocast.vbs','solocast.ico','Uninstall.exe','web\index.html','licenses\node-LICENSE') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "fichier manquant : $f" }
+          }
+          $sh = New-Object -ComObject WScript.Shell
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          foreach ($lnk in @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoloCast\SoloCast.lnk", "$desktop\SoloCast.lnk")) {
+            if (-not (Test-Path $lnk)) { throw "raccourci manquant : $lnk" }
+            $s = $sh.CreateShortcut($lnk)
+            Write-Host "$lnk -> $($s.TargetPath) $($s.Arguments)"
+            if ($s.TargetPath -notlike '*wscript.exe' -or $s.Arguments -notlike '*solocast.vbs*') { throw "raccourci inattendu : $lnk" }
+          }
+          $reg = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SoloCast'
+          if (-not $reg.UninstallString) { throw "entrée de désinstallation absente" }
+          Write-Host "installé : $($reg.DisplayName) $($reg.DisplayVersion)"
+
+      - name: Lancer comme le raccourci, exercer, quitter
+        shell: pwsh
+        run: |
+          $env:SOLOCAST_NO_OPEN = '1'
+          $dir = Join-Path $env:LOCALAPPDATA 'SoloCast'
+          $node = Join-Path $dir 'node.exe'
+          $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoloCast\SoloCast.lnk"
+          $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+          Start-Process -FilePath $s.TargetPath -ArgumentList $s.Arguments   # exactement le raccourci
+
+          & $node scripts\smoke.mjs core --video
+          if ($LASTEXITCODE -ne 0) { throw 'smoke core en échec' }
+
+          & $node scripts\smoke.mjs share
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Partage Cloudflare non vérifié (réseau du runner ?)" }
+
+          & $node scripts\smoke.mjs quit
+          if ($LASTEXITCODE -ne 0) { throw 'smoke quit en échec' }
+
+          Start-Sleep -Seconds 3
+          $left = Get-Process node,livekit-server,cloudflared -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir\*" }
+          if ($left) { $left | Format-Table Id,ProcessName,Path; throw 'processus restants après Quit' }
+
+      - name: Désinstaller pendant que l'app tourne
+        shell: pwsh
+        run: |
+          $env:SOLOCAST_NO_OPEN = '1'
+          $dir = Join-Path $env:LOCALAPPDATA 'SoloCast'
+          $s = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoloCast\SoloCast.lnk")
+          Start-Process -FilePath $s.TargetPath -ArgumentList $s.Arguments
+          $up = $false
+          for ($i = 0; $i -lt 60 -and -not $up; $i++) {
+            try { $up = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8080/health -TimeoutSec 2).StatusCode -eq 200 } catch { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $up) { throw "l'app ne démarre pas pour le test de désinstallation" }
+
+          $p = Start-Process -FilePath (Join-Path $dir 'Uninstall.exe') -ArgumentList '/S', "_?=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "désinstalleur : code de sortie $($p.ExitCode)" }
+          Start-Sleep -Seconds 2
+
+          foreach ($f in 'node.exe','livekit-server.exe','cloudflared.exe','solocast.mjs','web') {
+            if (Test-Path (Join-Path $dir $f)) { throw "reste après désinstallation : $f" }
+          }
+          if (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoloCast") { throw 'raccourcis du menu restants' }
+          if (Test-Path ([Environment]::GetFolderPath('Desktop') + '\SoloCast.lnk')) { throw 'raccourci du bureau restant' }
+          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SoloCast') { throw 'clé de registre restante' }
+          $left = Get-Process node,livekit-server,cloudflared -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir\*" }
+          if ($left) { throw 'processus restants après désinstallation' }
+
+      - name: Journal de l'application
+        if: always()
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:APPDATA 'SoloCast\solocast.log'
+          if (Test-Path $log) { Get-Content $log } else { Write-Host 'pas de journal' }
+
+  smoke-deb:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: solocast-installers
+          path: installers
+
+      - name: Installer, lancer, exercer, quitter, désinstaller
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ./installers/solocast_*_amd64.deb desktop-file-utils
+          dpkg -s solocast | grep -q 'Status: install ok installed'
+          desktop-file-validate /usr/share/applications/solocast.desktop
+          test -x /usr/bin/solocast
+          test -f /usr/share/icons/hicolor/256x256/apps/solocast.png
+
+          export SOLOCAST_NO_OPEN=1
+          nohup solocast > "$RUNNER_TEMP/solocast.out" 2>&1 &
+
+          /opt/solocast/node scripts/smoke.mjs core --video
+          if ! /opt/solocast/node scripts/smoke.mjs share; then
+            echo "::warning::Partage Cloudflare non vérifié (réseau du runner ?)"
+          fi
+          /opt/solocast/node scripts/smoke.mjs quit
+
+          sleep 3
+          if pgrep -f '/opt/solocast/' >/dev/null; then pgrep -fa '/opt/solocast/'; echo "processus restants"; exit 1; fi
+
+          sudo apt-get remove -y solocast
+          test ! -e /opt/solocast/node
+          test ! -e /usr/bin/solocast
+          test ! -e /usr/share/applications/solocast.desktop
+
+      - name: Journal de l'application
+        if: always()
+        run: cat ~/.config/solocast/solocast.log || true
+
+  publish:
+    needs: [package, smoke-windows, smoke-deb]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:

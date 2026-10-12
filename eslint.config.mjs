@@ -50,7 +50,14 @@ export default tseslint.config(
     files: ["**/*.mjs", "**/*.js"],
     ...tseslint.configs.disableTypeChecked,
     languageOptions: {
-      globals: { process: "readonly", console: "readonly", fetch: "readonly", Buffer: "readonly" },
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        Buffer: "readonly",
+        setTimeout: "readonly",
+        AbortSignal: "readonly",
+      },
     },
   },
 );
