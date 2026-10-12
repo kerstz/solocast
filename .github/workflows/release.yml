@@ -1,7 +1,10 @@
 name: release
 
 # Tag v1.2.3 -> installeurs Windows (.exe) et Debian (.deb) attachés à la release GitHub.
-# Lancement manuel : construit les mêmes fichiers, publiés en artefacts (pas de release).
+# Un tag avec tiret (v1.2.3-rc.1) donne une pré-version.
+# Lancement manuel : mêmes fichiers et mêmes tests, publiés en artefacts (pas de release).
+#
+# Les actions sont épinglées par SHA de commit (le tag affiché en commentaire).
 on:
   push:
     tags: ["v*"]
@@ -10,15 +13,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4 # version lue dans package.json (packageManager)
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4 (version lue dans package.json)
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -42,9 +49,11 @@ jobs:
           fi
 
       - name: Contenu du .deb
-        run: dpkg-deb -c dist/release/*.deb | head -40
+        run: |
+          dpkg-deb -I dist/release/*.deb
+          dpkg-deb -c dist/release/*.deb | grep -vE '/web/' | head -50
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: solocast-installers
           path: dist/release/*
@@ -55,9 +64,9 @@ jobs:
     needs: package
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: solocast-installers
           path: installers
@@ -68,8 +77,11 @@ jobs:
           $setup = (Get-ChildItem installers -Filter 'SoloCast-Setup-*.exe' | Select-Object -First 1).FullName
           $p = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "installeur : code de sortie $($p.ExitCode)" }
-          $dir = Join-Path $env:LOCALAPPDATA 'SoloCast'
-          foreach ($f in 'node.exe','livekit-server.exe','cloudflared.exe','solocast.mjs','solocast.vbs','solocast.ico','Uninstall.exe','web\index.html','licenses\node-LICENSE') {
+          $reg = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SoloCast'
+          if (-not $reg.InstallLocation) { throw "entrée de désinstallation absente" }
+          $dir = $reg.InstallLocation
+          Write-Host "installé : $($reg.DisplayName) $($reg.DisplayVersion) dans $dir (éditeur : $($reg.Publisher))"
+          foreach ($f in 'SoloCast.exe','node.exe','livekit-server.exe','cloudflared.exe','solocast.mjs','solocast.ico','THIRD_PARTY.txt','Uninstall.exe','web\index.html','licenses\node-LICENSE','licenses\livekit-LICENSE','licenses\cloudflared-LICENSE','licenses\OFL-VT323.txt') {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "fichier manquant : $f" }
           }
           $sh = New-Object -ComObject WScript.Shell
@@ -77,25 +89,31 @@ jobs:
           foreach ($lnk in @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoloCast\SoloCast.lnk", "$desktop\SoloCast.lnk")) {
             if (-not (Test-Path $lnk)) { throw "raccourci manquant : $lnk" }
             $s = $sh.CreateShortcut($lnk)
-            Write-Host "$lnk -> $($s.TargetPath) $($s.Arguments)"
-            if ($s.TargetPath -notlike '*wscript.exe' -or $s.Arguments -notlike '*solocast.vbs*') { throw "raccourci inattendu : $lnk" }
+            Write-Host "$lnk -> $($s.TargetPath)"
+            if ($s.TargetPath -ne (Join-Path $dir 'SoloCast.exe')) { throw "raccourci inattendu : $lnk" }
           }
-          $reg = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SoloCast'
-          if (-not $reg.UninstallString) { throw "entrée de désinstallation absente" }
-          Write-Host "installé : $($reg.DisplayName) $($reg.DisplayVersion)"
+          # Le lanceur est un vrai exécutable Windows avec ses métadonnées.
+          $vi = (Get-Item (Join-Path $dir 'SoloCast.exe')).VersionInfo
+          Write-Host "SoloCast.exe : $($vi.ProductName) $($vi.FileVersion)"
 
       - name: Lancer comme le raccourci, exercer, quitter
         shell: pwsh
         run: |
           $env:SOLOCAST_NO_OPEN = '1'
-          $dir = Join-Path $env:LOCALAPPDATA 'SoloCast'
+          $dir = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SoloCast').InstallLocation
           $node = Join-Path $dir 'node.exe'
           $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoloCast\SoloCast.lnk"
           $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
-          Start-Process -FilePath $s.TargetPath -ArgumentList $s.Arguments   # exactement le raccourci
+          Start-Process -FilePath $s.TargetPath   # exactement ce que fait le raccourci
 
           & $node scripts\smoke.mjs core --video
           if ($LASTEXITCODE -ne 0) { throw 'smoke core en échec' }
+
+          # Deuxième lancement : doit rouvrir l'instance en place, pas en démarrer une autre.
+          Start-Process -FilePath $s.TargetPath
+          Start-Sleep -Seconds 6
+          $nodes = @(Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir\*" })
+          if ($nodes.Count -ne 1) { throw "deuxième lancement : $($nodes.Count) processus node (attendu 1)" }
 
           & $node scripts\smoke.mjs share
           if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Partage Cloudflare non vérifié (réseau du runner ?)" }
@@ -111,9 +129,8 @@ jobs:
         shell: pwsh
         run: |
           $env:SOLOCAST_NO_OPEN = '1'
-          $dir = Join-Path $env:LOCALAPPDATA 'SoloCast'
-          $s = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoloCast\SoloCast.lnk")
-          Start-Process -FilePath $s.TargetPath -ArgumentList $s.Arguments
+          $dir = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SoloCast').InstallLocation
+          Start-Process -FilePath (Join-Path $dir 'SoloCast.exe')
           $up = $false
           for ($i = 0; $i -lt 60 -and -not $up; $i++) {
             try { $up = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8080/health -TimeoutSec 2).StatusCode -eq 200 } catch { Start-Sleep -Milliseconds 500 }
@@ -124,7 +141,7 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "désinstalleur : code de sortie $($p.ExitCode)" }
           Start-Sleep -Seconds 2
 
-          foreach ($f in 'node.exe','livekit-server.exe','cloudflared.exe','solocast.mjs','web') {
+          foreach ($f in 'SoloCast.exe','node.exe','livekit-server.exe','cloudflared.exe','solocast.mjs','web','licenses') {
             if (Test-Path (Join-Path $dir $f)) { throw "reste après désinstallation : $f" }
           }
           if (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoloCast") { throw 'raccourcis du menu restants' }
@@ -137,16 +154,26 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $log = Join-Path $env:APPDATA 'SoloCast\solocast.log'
+          $log = Join-Path $env:LOCALAPPDATA 'SoloCast-state\solocast.log'
           if (Test-Path $log) { Get-Content $log } else { Write-Host 'pas de journal' }
 
+  # Installe le .deb dans des images Debian/Ubuntu nues : vérifie les dépendances déclarées
+  # (libc, certificats), le lancement, l'arrêt et la suppression propre.
   smoke-deb:
     needs: package
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:11", "ubuntu:24.04"]
+    container: ${{ matrix.image }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Outils minimaux
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates procps desktop-file-utils
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: solocast-installers
           path: installers
@@ -154,12 +181,15 @@ jobs:
       - name: Installer, lancer, exercer, quitter, désinstaller
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ./installers/solocast_*_amd64.deb desktop-file-utils
+          apt-get install -y ./installers/solocast_*_amd64.deb
           dpkg -s solocast | grep -q 'Status: install ok installed'
           desktop-file-validate /usr/share/applications/solocast.desktop
           test -x /usr/bin/solocast
           test -f /usr/share/icons/hicolor/256x256/apps/solocast.png
+          test -f /usr/share/doc/solocast/copyright
+          test -f /usr/share/doc/solocast/changelog.gz
+          test -f /usr/share/man/man1/solocast.1.gz
+          md5sum -c --quiet /var/lib/dpkg/info/solocast.md5sums
 
           export SOLOCAST_NO_OPEN=1
           nohup solocast > "$RUNNER_TEMP/solocast.out" 2>&1 &
@@ -173,7 +203,7 @@ jobs:
           sleep 3
           if pgrep -f '/opt/solocast/' >/dev/null; then pgrep -fa '/opt/solocast/'; echo "processus restants"; exit 1; fi
 
-          sudo apt-get remove -y solocast
+          apt-get remove -y solocast
           test ! -e /opt/solocast/node
           test ! -e /usr/bin/solocast
           test ! -e /usr/share/applications/solocast.desktop
@@ -189,12 +219,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: solocast-installers
           path: release
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: release/*
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

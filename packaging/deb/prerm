@@ -1,0 +1,38 @@
+#!/bin/sh
+# Arrête toute instance de SoloCast (tous utilisateurs) avant suppression ou mise à jour :
+# le site (noms de fichiers hachés) change sous les pieds d'un processus en cours.
+# Ne vise QUE les exécutables de /opt/solocast (node, livekit-server, cloudflared).
+set -e
+
+stop_solocast() {
+    pids=""
+    for exe in /proc/[0-9]*/exe; do
+        target=$(readlink "$exe" 2>/dev/null) || continue
+        case "$target" in
+            /opt/solocast/*)
+                pid=${exe#/proc/}; pid=${pid%/exe}
+                pids="$pids $pid"
+                ;;
+        esac
+    done
+    [ -n "$pids" ] || return 0
+    echo "Arrêt de SoloCast en cours d'exécution…"
+    # shellcheck disable=SC2086
+    kill -TERM $pids 2>/dev/null || true
+    i=0
+    while [ $i -lt 10 ]; do
+        alive=""
+        for pid in $pids; do [ -d "/proc/$pid" ] && alive="$alive $pid"; done
+        [ -n "$alive" ] || return 0
+        sleep 1; i=$((i + 1))
+    done
+    # shellcheck disable=SC2086
+    kill -KILL $alive 2>/dev/null || true
+}
+
+case "$1" in
+    remove|upgrade|deconfigure|failed-upgrade)
+        stop_solocast
+        ;;
+esac
+exit 0

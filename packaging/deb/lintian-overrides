@@ -1,0 +1,7 @@
+# Appli autonome hors archive : binaires amont (Node, LiveKit, cloudflared) embarqués tels quels.
+solocast: dir-or-file-in-opt *
+solocast: embedded-library *
+solocast: statically-linked-binary *
+solocast: unstripped-binary-or-object *
+solocast: hardening-no-pie *
+solocast: extra-license-file *

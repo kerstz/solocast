@@ -82,17 +82,20 @@ async function waitHealthy(seconds) {
   return false;
 }
 
-function cookieOf(res, name) {
+// Le cookie du studio porte le préfixe __Host- dans l'app installée.
+const STUDIO_COOKIE = /^(__Host-)?sc_session=/;
+
+function cookieOf(res) {
   const raw = res.headers["set-cookie"] ?? [];
   for (const line of raw) {
-    if (line.startsWith(`${name}=`)) return line.split(";")[0];
+    if (STUDIO_COOKIE.test(line)) return line.split(";")[0];
   }
   return null;
 }
 
 async function openStudio() {
   const res = await http("POST", "/api/studio/open", { body: {} });
-  const cookie = cookieOf(res, "sc_session");
+  const cookie = cookieOf(res);
   if (res.status !== 204 || cookie === null) {
     throw new Error(`studio/open : HTTP ${String(res.status)}, cookie ${String(cookie)}`);
   }
@@ -182,7 +185,16 @@ async function core() {
   }
   check("api/app/status", status.status === 200 && parsed?.mediaPorts?.tcp === 7881, status.text);
   check("partage éteint par défaut", parsed?.share?.state === "off", status.text);
-  if (wantVideo) check("serveur vidéo annoncé", parsed?.video === true, status.text);
+  if (wantVideo) {
+    // Le SFU démarre en arrière-plan (jusqu'à ~1 min hors ligne, repli sans STUN) : on l'attend.
+    let video = parsed?.video;
+    for (let i = 0; i < 120 && video === "starting"; i += 1) {
+      await sleep(1_000);
+      const again = await http("GET", "/api/app/status", { headers: { cookie } });
+      video = JSON.parse(again.text).video;
+    }
+    check("serveur vidéo prêt", video === "ready", `video=${String(video)}`);
+  }
 
   const anonStatus = await http("GET", "/api/app/status");
   check(

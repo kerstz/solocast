@@ -15,7 +15,7 @@ import { createChatHub } from "./chat/hub.js";
 import { createMemoryChatServices, type ChatServices } from "./chat/services.js";
 import type { AppConfig } from "./config.js";
 import { HttpError, registerErrorHandlers } from "./http/errors.js";
-import { isLocalRequest } from "./http/local-host.js";
+import { isLocalHost, isLocalRequest } from "./http/local-host.js";
 import type { AppControl } from "./app-control.js";
 import { registerAppRoutes } from "./routes/app.js";
 import { createLiveKitGateway, type LiveKitGateway } from "./livekit/gateway.js";
@@ -57,6 +57,9 @@ export interface BuildAppOptions {
   studioLocalOnly?: boolean;
   // Commandes de l'application installée (partage, arrêt). Absent en développement.
   appControl?: AppControl;
+  // Identifiant d'instance exposé par /health : permet au lanceur de reconnaître SA propre
+  // instance déjà démarrée (deuxième clic sur l'icône) sans inspecter les processus.
+  instanceId?: string;
   // true derrière le tunnel Cloudflare du lanceur : le rate-limit compte l'IP réelle du visiteur
   // (`cf-connecting-ip`, posé par Cloudflare) au lieu de 127.0.0.1 pour tout le monde.
   trustCloudflareIp?: boolean;
@@ -167,6 +170,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
               objectSrc: ["'none'"],
               frameAncestors: ["'none'"],
               baseUri: ["'self'"],
+              // L'app tourne en http://127.0.0.1 : « upgrade » casserait chaque requête (Firefox).
+              upgradeInsecureRequests: null,
             },
           },
         }),
@@ -184,9 +189,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     global: false,
     ...(options.trustCloudflareIp === true
       ? {
+          // `cf-connecting-ip` n'est digne de foi que sur le trajet du tunnel, où l'en-tête Host
+          // est l'adresse publique : un client local qui le forge garde Host=localhost.
           keyGenerator: (request) => {
             const forwarded = request.headers["cf-connecting-ip"];
-            return typeof forwarded === "string" && forwarded !== "" ? forwarded : request.ip;
+            const viaTunnel = !isLocalHost(request.headers.host);
+            return viaTunnel && typeof forwarded === "string" && forwarded !== ""
+              ? forwarded
+              : request.ip;
           },
         }
       : {}),
@@ -261,7 +271,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     hub,
   };
   // Liveness probe (launcher, reverse proxy). No session, no store access.
-  app.get("/health", async (_request, reply) => reply.send({ status: "ok" }));
+  app.get("/health", async (_request, reply) =>
+    reply.send(
+      options.instanceId === undefined
+        ? { status: "ok" }
+        : { status: "ok", instance: options.instanceId },
+    ),
+  );
 
   registerStudioRoutes(app, routeDeps);
   registerMeRoutes(app, routeDeps);
@@ -293,7 +309,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // Front exporté : les chemins API/WS/webhooks sont déjà enregistrés plus haut, tout le reste
   // part vers les fichiers statiques (`/watch` -> `watch/index.html`).
   if (options.staticDir !== undefined) {
-    await app.register(fastifyStatic, { root: options.staticDir, wildcard: true });
+    await app.register(fastifyStatic, {
+      root: options.staticDir,
+      wildcard: true,
+      setHeaders: (res, filePath) => {
+        // Fichiers au nom haché de Next : jamais modifiés, donc cachables à vie.
+        if (/[\\/]_next[\\/]static[\\/]/.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    });
   }
 
   app.addHook("onReady", (done) => {

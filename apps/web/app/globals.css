@@ -1269,6 +1269,10 @@ a:hover {
   color: var(--ink-soft);
 }
 
+.studio-tabs[hidden] {
+  display: none;
+}
+
 .studio-tabs {
   display: flex;
   gap: 4px;

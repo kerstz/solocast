@@ -208,8 +208,8 @@ export const AppStatusSchema = z.strictObject({
       .regex(/^https:\/\/\S+$/)
       .nullable(),
   }),
-  // false : le serveur média (LiveKit) n'est pas livré avec cette installation.
-  video: z.boolean(),
+  // État du serveur média (LiveKit) : « unavailable » = non livré ou en échec.
+  video: z.enum(["ready", "starting", "unavailable"]),
   // true : un service Ingress (OBS/RTMP) est disponible. Faux dans l'installation autonome.
   ingest: z.boolean(),
   // Ports à ouvrir sur la box pour que la vidéo atteigne des spectateurs distants.

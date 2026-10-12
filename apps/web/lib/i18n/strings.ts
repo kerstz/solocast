@@ -54,7 +54,7 @@ export const STRINGS = {
     goLiveIntro: "You are the streamer? Open the studio — no key: whoever opens it takes the desk.",
     errors: {
       invalid_input: "Invalid username: 3 to 24 characters, letters, digits, _ or -.",
-      network: "Cannot reach the server. Check that the backend is running.",
+      network: "Cannot reach SoloCast. Check that it is still open on the streamer's computer.",
       rate_limited: "Too many attempts. Wait a moment.",
       server: "Server error. Try again in a moment.",
     },
@@ -67,7 +67,8 @@ export const STRINGS = {
       retry: "» Try again",
       errors: {
         rate_limited: "Too many attempts. Wait a moment, then try again.",
-        network: "Cannot reach the server. Check that the backend is running.",
+        forbidden: "The studio only opens on the computer that runs SoloCast.",
+        network: "Cannot reach SoloCast. Check that it is still open on the streamer's computer.",
         server: "Server error. Try again in a moment.",
       },
     },
@@ -78,8 +79,7 @@ export const STRINGS = {
     chatReadOnly: "Read-only. Moderation: Mute and Ban from the stage list.",
     modes: { obs: "OBS", browser: "Browser", label: "Broadcast mode" },
     obs: {
-      intro:
-        "In OBS: Settings, Stream, custom server, then paste the URL and key below. Requires the LiveKit Ingress service (docker compose up -d ingress).",
+      intro: "In OBS: Settings, Stream, custom server, then paste the URL and key below.",
       url: "Ingest URL",
       key: "Stream key",
       copy: "Copy",
@@ -91,8 +91,8 @@ export const STRINGS = {
       hint: "Keep the stream key secret: it grants the right to publish on this channel.",
       errors: {
         forbidden: "The studio session expired. Reload the page.",
-        server: "The LiveKit Ingress service did not answer. Start it, then try again.",
-        network: "Cannot reach the server. Check that the backend is running.",
+        server: "The OBS ingest service did not answer. Try again in a moment.",
+        network: "Cannot reach SoloCast. Check that it is still open on the streamer's computer.",
         rate_limited: "Too many requests. Wait a moment, then try again.",
       },
     },
@@ -119,6 +119,8 @@ export const STRINGS = {
       failed: "Broadcast could not start. Try again.",
       settings_failed: "That setting could not be applied on the fly.",
       lost: "The broadcast dropped. Start it again.",
+      sfu_unavailable:
+        "The video server is not running, so you cannot go live. Quit SoloCast and open it again.",
     },
     settings: {
       title: "Capture settings",
@@ -151,14 +153,16 @@ export const STRINGS = {
       starting: "Opening the public link…",
       on: "Anyone with this link can watch and chat. Only this computer can open the studio.",
       unavailable:
-        "The public link could not be opened. Check the internet connection, then try again.",
+        "The public link is not available. Check the internet connection, then press Share again.",
       enable: "Share",
       disable: "Stop sharing",
       copy: "Copy link",
       copied: "Copied.",
       linkChanges: "The link changes every time sharing is turned on.",
+      videoStarting: "The video server is starting. You can already open the studio.",
       noVideoTitle: "Video is not available",
-      noVideo: "The media server is not installed with this copy of SoloCast: chat only.",
+      noVideo:
+        "The video server did not start (or is not installed with this copy of SoloCast): chat only. Details are in the log file.",
       ports: (tcp: number, udp: number): string =>
         `Chat works for everyone with the link. For viewers outside your home network to receive video, open TCP ${String(tcp)} and UDP ${String(udp)} on your router and send them to this computer. This is not possible on every connection (mobile data, some providers).`,
       quit: "Quit SoloCast",
@@ -168,7 +172,7 @@ export const STRINGS = {
       stopped: "SoloCast has stopped. You can close this tab.",
       version: (v: string): string => `Version ${v}`,
       errors: {
-        forbidden: "The studio session expired. Reload the page.",
+        forbidden: "The studio was opened in another window. Reload to take it back here.",
         network: "Cannot reach SoloCast. It may have stopped.",
         server: "Something went wrong. Try again.",
         rate_limited: "Too many attempts. Wait a moment.",
@@ -203,7 +207,7 @@ export const STRINGS = {
       unauthorized: "Studio session refused.",
       forbidden: "Access denied.",
       rate_limited: "Too many attempts. Wait a moment.",
-      network: "Cannot reach the server. Check that the backend is running.",
+      network: "Cannot reach SoloCast. Check that it is still open on the streamer's computer.",
       server: "Server error. Try again in a moment.",
       invalid_input: "Invalid request.",
     },
@@ -225,6 +229,9 @@ export const STRINGS = {
     offlineHint: "Waiting for the streamer. This page reconnects by itself.",
     errorTitle: "Playback failed",
     errorHint: "This browser could not join the stream.",
+    noVideoTitle: "Video is not available right now",
+    noVideoHint:
+      "The streamer's video server is not reachable (SoloCast may be closed). The chat still works, and this page keeps trying.",
     roomFullTitle: "The room is full",
     roomFullHint: "The streamer caps how many viewers can watch at once. This page keeps trying.",
     viewers: (n: number): string => viewersText(n),

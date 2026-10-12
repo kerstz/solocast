@@ -154,12 +154,16 @@ export function Player({ watch, muted, viewers }: PlayerProps) {
               <p>
                 {watch.fault === "room_full"
                   ? STRINGS.player.roomFullTitle
-                  : STRINGS.player.errorTitle}
+                  : watch.fault === "no_video"
+                    ? STRINGS.player.noVideoTitle
+                    : STRINGS.player.errorTitle}
               </p>
               <p style={{ fontSize: 16 }}>
                 {watch.fault === "room_full"
                   ? STRINGS.player.roomFullHint
-                  : STRINGS.player.errorHint}
+                  : watch.fault === "no_video"
+                    ? STRINGS.player.noVideoHint
+                    : STRINGS.player.errorHint}
               </p>
             </div>
           ) : null}

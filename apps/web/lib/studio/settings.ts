@@ -45,9 +45,10 @@ export const DEFAULT_STREAM_SETTINGS: StreamSettings = {
   source: "camera",
   cameraId: null,
   microphoneId: null,
-  resolution: 1080,
-  fps: 60,
-  maxBitrateKbps: 6000,
+  // 720p30 à 3000 kb/s : tient dans une liaison montante domestique ordinaire.
+  resolution: 720,
+  fps: 30,
+  maxBitrateKbps: 3000,
   simulcast: true,
 };
 

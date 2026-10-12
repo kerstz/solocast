@@ -73,7 +73,7 @@ function mockAppStatus(): AppStatus {
   return {
     version: "mock",
     share: mockShare,
-    video: true,
+    video: "ready",
     ingest: true,
     mediaPorts: { tcp: 7881, udp: 7882 },
   };

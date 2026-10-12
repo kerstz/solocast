@@ -17,6 +17,8 @@ export type ApiErrorCode =
   | "rate_limited"
   // 503 : plafond MAX_VIEWERS atteint.
   | "room_full"
+  // 502 : le serveur vidéo (SFU) ne répond pas ou n'est pas démarré.
+  | "sfu_unavailable"
   | "network"
   | "server";
 

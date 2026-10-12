@@ -1,12 +1,13 @@
 [Desktop Entry]
 Type=Application
 Name=SoloCast
-GenericName=Streaming
-Comment=Diffuser un direct et le partager avec un lien
-Comment[en]=Stream live and share it with a link
+GenericName=Live streaming
+GenericName[fr]=Diffusion en direct
+Comment=Stream live and share it with a link
+Comment[fr]=Diffuser un direct et le partager avec un lien
 Exec=solocast
 Icon=solocast
 Terminal=false
 StartupNotify=false
-Categories=AudioVideo;Video;Network;
-Keywords=stream;live;direct;
+Categories=AudioVideo;Video;
+Keywords=stream;live;broadcast;direct;

@@ -64,12 +64,21 @@ export function createProxy(targets: ProxyTargets): Server {
         upstreamRes.pipe(res);
       },
     );
+    // Une réponse du backend qui n'arrive jamais ne doit pas retenir la connexion client.
+    upstream.setTimeout(30_000, () => {
+      upstream.destroy();
+    });
     upstream.on("error", () => {
       if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
       res.end("Upstream not ready.\n");
     });
     req.pipe(upstream);
   });
+  // Exposé sur internet par le tunnel : bornes contre les connexions lentes ou nombreuses.
+  server.headersTimeout = 15_000;
+  server.requestTimeout = 60_000;
+  server.keepAliveTimeout = 30_000;
+  server.maxConnections = 1_024;
 
   server.on("upgrade", (req, socket: Socket, head) => {
     const target = targetFor(req.url);

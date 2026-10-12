@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { STRINGS } from "../../lib/i18n/strings";
 import type { AppControlState } from "../../lib/studio/useAppControl";
 import { StudioSection } from "./StudioSection";
@@ -19,6 +19,11 @@ export function AppPanel({ app }: AppPanelProps) {
   const [copied, setCopied] = useState(false);
   const [confirmQuit, setConfirmQuit] = useState(false);
   const S = STRINGS.studio.app;
+
+  const shareUrl = status?.share.url ?? null;
+  useEffect(() => {
+    setCopied(false);
+  }, [shareUrl]);
 
   if (stopped) {
     return (
@@ -74,15 +79,21 @@ export function AppPanel({ app }: AppPanelProps) {
             </button>
           </div>
           <p className="studio-hint">{S.linkChanges}</p>
-          {status.video ? (
+          {status.video === "ready" ? (
             <p className="studio-hint">{S.ports(status.mediaPorts.tcp, status.mediaPorts.udp)}</p>
           ) : null}
         </>
       ) : null}
 
-      {!status.video ? (
+      {status.video === "unavailable" ? (
         <p className="studio-hint" data-tone="error">
           <strong>{S.noVideoTitle}.</strong> {S.noVideo}
+        </p>
+      ) : null}
+
+      {status.video === "starting" ? (
+        <p className="studio-hint" role="status">
+          {S.videoStarting}
         </p>
       ) : null}
 

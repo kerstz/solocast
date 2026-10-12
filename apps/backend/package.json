@@ -16,7 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "launch": "tsx src/launcher/main.ts",
-    "bundle": "esbuild src/launcher/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/solocast.mjs --banner:js=\"import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);\" --legal-comments=eof --define:process.env.SOLOCAST_VERSION=\\\"${SOLOCAST_VERSION:-dev}\\\""
+    "bundle": "esbuild src/launcher/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/solocast.mjs --banner:js=\"import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);\" --legal-comments=eof --metafile=dist/meta.json --define:process.env.SOLOCAST_VERSION=\\\"${SOLOCAST_VERSION:-dev}\\\""
   },
   "dependencies": {
     "@fastify/cookie": "^9.4.0",

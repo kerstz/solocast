@@ -10,14 +10,14 @@ import {
 } from "./settings";
 
 describe("réglages studio : état et validation", () => {
-  it("part des valeurs par défaut (caméra, 1080p60, débit 6000, simulcast on)", () => {
+  it("part des valeurs par défaut (caméra, 720p30, débit 3000, simulcast on)", () => {
     expect(DEFAULT_STREAM_SETTINGS).toEqual({
       source: "camera",
       cameraId: null,
       microphoneId: null,
-      resolution: 1080,
-      fps: 60,
-      maxBitrateKbps: 6000,
+      resolution: 720,
+      fps: 30,
+      maxBitrateKbps: 3000,
       simulcast: true,
     });
   });
@@ -25,7 +25,7 @@ describe("réglages studio : état et validation", () => {
   it("accepte une valeur autorisée et renvoie un NOUVEL objet (pas de mutation)", () => {
     const next = setStreamSetting(DEFAULT_STREAM_SETTINGS, "resolution", "720");
     expect(next?.resolution).toBe(720);
-    expect(DEFAULT_STREAM_SETTINGS.resolution).toBe(1080);
+    expect(DEFAULT_STREAM_SETTINGS.resolution).toBe(720);
   });
 
   it("refuse une valeur hors liste (aucun état changé)", () => {
@@ -73,7 +73,7 @@ describe("réglages studio : état et validation", () => {
   });
 
   it("changedSettings ne liste que les clés réellement modifiées", () => {
-    const next = setStreamSetting(DEFAULT_STREAM_SETTINGS, "fps", "30");
+    const next = setStreamSetting(DEFAULT_STREAM_SETTINGS, "fps", "60");
     expect(next).not.toBeNull();
     expect(changedSettings(DEFAULT_STREAM_SETTINGS, next ?? DEFAULT_STREAM_SETTINGS)).toEqual([
       "fps",
@@ -86,12 +86,12 @@ describe("persistance des réglages", () => {
   it("restaure ce qui a été sérialisé, sans les périphériques", () => {
     const custom = {
       ...DEFAULT_STREAM_SETTINGS,
-      resolution: 720 as const,
+      resolution: 1080 as const,
       simulcast: false,
       cameraId: "cam-1",
     };
     const restored = restoreSettings(serializeSettings(custom));
-    expect(restored.resolution).toBe(720);
+    expect(restored.resolution).toBe(1080);
     expect(restored.simulcast).toBe(false);
     expect(restored.cameraId).toBeNull();
   });

@@ -31,6 +31,7 @@ function codeFromStatus(status: number): ApiErrorCode {
   if (status === 403) return "forbidden";
   if (status === 409) return "conflict";
   if (status === 429) return "rate_limited";
+  if (status === 502) return "sfu_unavailable";
   if (status === 503) return "room_full";
   return "server";
 }

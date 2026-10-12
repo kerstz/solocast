@@ -7,7 +7,7 @@ function fakeControl() {
   let status: AppStatus = {
     version: "0.1.0",
     share: { state: "off", url: null },
-    video: true,
+    video: "ready",
     ingest: false,
     mediaPorts: { tcp: 7881, udp: 7882 },
   };

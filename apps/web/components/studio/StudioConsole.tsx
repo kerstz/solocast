@@ -25,6 +25,21 @@ export function StudioConsole() {
   const studio = useStudio(getViewerBackend(), getBroadcaster(), previewRef);
   const app = useAppControl(getViewerBackend());
 
+  if (app.stopped) {
+    return (
+      <div className="desk studio-desk">
+        <main className="desk-main connexion-center">
+          <div className="win connexion-window">
+            <TitleBar title={STRINGS.window.studioTitle} closeHref="/" glyph={<ScreenGlyph />} />
+            <div style={{ padding: 16 }}>
+              <p role="status">{STRINGS.studio.app.stopped}</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="desk studio-desk">
       <main className="desk-main studio-main" aria-label={STRINGS.studio.pageLabel}>
@@ -36,7 +51,8 @@ export function StudioConsole() {
             <BroadcastPanel
               studio={studio}
               previewRef={previewRef}
-              obsAvailable={app.status === null || app.status.ingest}
+              obsAvailable={app.loaded && (app.status === null || app.status.ingest)}
+              videoUnavailable={app.status?.video === "unavailable"}
             />
             <SettingsPanel
               settings={studio.settings}

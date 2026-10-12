@@ -5,28 +5,58 @@ import {
   openSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-/** Dossier utilisateur de l'app : %APPDATA%\SoloCast (Windows) ou ~/.config/solocast. */
+const folderName = process.platform === "win32" ? "SoloCast" : "solocast";
+
+function ensure(dir: string): string {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    // Dossier non créable : les écritures échouent ensuite sans bruit, l'app tourne quand même.
+  }
+  return dir;
+}
+
+/** Réglages de l'utilisateur : %APPDATA%\SoloCast (Windows) ou ~/.config/solocast. */
 export function dataDir(): string {
   const base =
     process.platform === "win32"
       ? (process.env.APPDATA ?? path.join(homedir(), "AppData", "Roaming"))
       : (process.env.XDG_CONFIG_HOME ?? path.join(homedir(), ".config"));
-  const dir = path.join(base, process.platform === "win32" ? "SoloCast" : "solocast");
-  mkdirSync(dir, { recursive: true });
-  return dir;
+  return ensure(path.join(base, folderName));
+}
+
+/**
+ * État de session (verrou, instance, journal) : propre à la machine, donc %LOCALAPPDATA% sous
+ * Windows (hors profil itinérant). Même dossier que les réglages ailleurs.
+ */
+export function stateDir(): string {
+  if (process.platform !== "win32") return dataDir();
+  const base = process.env.LOCALAPPDATA ?? path.join(homedir(), "AppData", "Local");
+  // Nom distinct du dossier d'installation (l'ancien emplacement par défaut était
+  // %LOCALAPPDATA%\SoloCast) : le désinstalleur peut ainsi retirer le programme proprement.
+  return ensure(path.join(base, `${folderName}-state`));
+}
+
+// Antivirus et indexeurs verrouillent parfois un fichier une fraction de seconde (EBUSY/EPERM) :
+// aucune de ces opérations ne doit faire tomber l'application.
+function attempt(action: () => void): void {
+  try {
+    action();
+  } catch {
+    // ignoré : voir ci-dessus
+  }
 }
 
 export interface Settings {
   // Publier l'adresse partageable au démarrage. Réglé depuis le studio, pas depuis un terminal.
   share: boolean;
 }
-
-const DEFAULT_SETTINGS: Settings = { share: false };
 
 export function loadSettings(dir: string): Settings {
   try {
@@ -35,17 +65,21 @@ export function loadSettings(dir: string): Settings {
     ) as Partial<Settings>;
     return { share: raw.share === true };
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return { share: false };
   }
 }
 
 export function saveSettings(dir: string, settings: Settings): void {
-  writeFileSync(path.join(dir, "settings.json"), `${JSON.stringify(settings, null, 2)}\n`);
+  attempt(() => {
+    writeFileSync(path.join(dir, "settings.json"), `${JSON.stringify(settings, null, 2)}\n`);
+  });
 }
 
 export interface InstanceInfo {
   pid: number;
   port: number;
+  /** Identifiant aléatoire repris par /health : prouve que ce port est bien CETTE instance. */
+  id: string;
   children: number[];
 }
 
@@ -58,8 +92,9 @@ export function readInstance(dir: string): InstanceInfo | null {
     return {
       pid: raw.pid,
       port: raw.port,
+      id: typeof raw.id === "string" ? raw.id : "",
       children: Array.isArray(raw.children)
-        ? raw.children.filter((n) => typeof n === "number")
+        ? raw.children.filter((n): n is number => typeof n === "number")
         : [],
     };
   } catch {
@@ -68,19 +103,21 @@ export function readInstance(dir: string): InstanceInfo | null {
 }
 
 export function writeInstance(dir: string, info: InstanceInfo): void {
-  writeFileSync(instanceFile(dir), JSON.stringify(info));
+  attempt(() => {
+    writeFileSync(instanceFile(dir), JSON.stringify(info));
+  });
 }
 
 export function clearInstance(dir: string): void {
-  rmSync(instanceFile(dir), { force: true });
+  attempt(() => {
+    rmSync(instanceFile(dir), { force: true, maxRetries: 5, retryDelay: 100 });
+  });
 }
 
 export function logLine(dir: string, line: string): void {
-  try {
+  attempt(() => {
     appendFileSync(path.join(dir, "solocast.log"), `${new Date().toISOString()} ${line}\n`);
-  } catch {
-    // Journal indisponible : sans conséquence pour le fonctionnement.
-  }
+  });
 }
 
 const lockFile = (dir: string): string => path.join(dir, "instance.lock");
@@ -89,8 +126,11 @@ const lockFile = (dir: string): string => path.join(dir, "instance.lock");
 export function tryLock(dir: string): boolean {
   try {
     const fd = openSync(lockFile(dir), "wx");
-    writeFileSync(fd, String(process.pid));
-    closeSync(fd);
+    try {
+      writeFileSync(fd, String(process.pid));
+    } finally {
+      closeSync(fd);
+    }
     return true;
   } catch {
     return false;
@@ -106,6 +146,17 @@ export function lockHolder(dir: string): number | null {
   }
 }
 
+/** Âge du fichier verrou (ms), null s'il n'existe pas. Un verrou tout neuf n'a pas encore son PID. */
+export function lockAgeMs(dir: string): number | null {
+  try {
+    return Date.now() - statSync(lockFile(dir)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
 export function releaseLock(dir: string): void {
-  rmSync(lockFile(dir), { force: true });
+  attempt(() => {
+    rmSync(lockFile(dir), { force: true, maxRetries: 5, retryDelay: 100 });
+  });
 }

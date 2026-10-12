@@ -9,6 +9,8 @@ import { STRINGS } from "../i18n/strings";
 export interface AppControlState {
   /** `null` : pas l'application installée (ou pas encore chargé) : le panneau reste caché. */
   status: AppStatus | null;
+  /** Première réponse reçue (même « pas l'application installée »). */
+  loaded: boolean;
   busy: boolean;
   error: string | null;
   stopped: boolean;
@@ -27,6 +29,7 @@ export function useAppControl(backend: ViewerBackend): AppControlState {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const statusRef = useRef(status);
 
   useEffect(() => {
@@ -38,7 +41,10 @@ export function useAppControl(backend: ViewerBackend): AppControlState {
     const load = async (): Promise<void> => {
       try {
         const next = await backend.getAppStatus();
-        if (!run.cancelled) setStatus(next);
+        if (!run.cancelled) {
+          setStatus(next);
+          setLoaded(true);
+        }
       } catch {
         // Injoignable : on garde le dernier état connu, le prochain tour réessaie.
       }
@@ -89,5 +95,5 @@ export function useAppControl(backend: ViewerBackend): AppControlState {
       });
   }, [backend]);
 
-  return { status, busy, error, stopped, toggleShare, quit };
+  return { status, loaded, busy, error, stopped, toggleShare, quit };
 }

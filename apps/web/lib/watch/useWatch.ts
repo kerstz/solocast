@@ -15,7 +15,7 @@ import type { WatchRoom, WatchStatus } from "./room";
 /** Delay before another join attempt when the session failed (streamer offline, SFU down). */
 export const WATCH_RETRY_MS = 8_000;
 
-export type WatchFault = "room_full";
+export type WatchFault = "room_full" | "no_video";
 
 export interface WatchFeed {
   status: WatchStatus;
@@ -81,7 +81,12 @@ export function useWatch(backend: ViewerBackend, room: WatchRoom, enabled: boole
         if (disposed) return;
         // 503 room_full : le plafond MAX_VIEWERS est atteint. Le viewer n'a pas de place, la
         // boucle de reprise continue : une place peut se libérer.
-        setFault(err instanceof ApiError && err.code === "room_full" ? "room_full" : null);
+        // 502 sfu_unavailable : pas de serveur vidéo (ou le streameur a quitté SoloCast) : ce
+        // n'est pas la faute du navigateur, et le chat continue de fonctionner.
+        const code = err instanceof ApiError ? err.code : null;
+        setFault(
+          code === "room_full" ? "room_full" : code === "sfu_unavailable" ? "no_video" : null,
+        );
         setStatus("error");
       }
     };

@@ -13,6 +13,8 @@ interface BroadcastPanelProps {
   previewRef: RefObject<HTMLVideoElement>;
   /** false dans l'application installée : pas de service Ingress, donc pas d'onglet OBS. */
   obsAvailable: boolean;
+  /** Serveur vidéo absent ou en échec : « Go live » ne peut pas réussir. */
+  videoUnavailable: boolean;
 }
 
 const MODES: readonly BroadcastMode[] = ["browser", "obs"];
@@ -34,7 +36,12 @@ function toggleLabel(phase: BroadcastPhase): string {
  * Diffusion : OBS (URL RTMP + clé de flux de l'Ingress LiveKit) ou Navigateur
  * (caméra ou partage d'écran, plus le micro, publiés via livekit-client après token serveur).
  */
-export function BroadcastPanel({ studio, previewRef, obsAvailable }: BroadcastPanelProps) {
+export function BroadcastPanel({
+  studio,
+  previewRef,
+  obsAvailable,
+  videoUnavailable,
+}: BroadcastPanelProps) {
   const { phase, fault } = studio;
   const mode = obsAvailable ? studio.mode : "browser";
   // Demandé au serveur seulement quand l'onglet OBS est affiché.
@@ -96,7 +103,7 @@ export function BroadcastPanel({ studio, previewRef, obsAvailable }: BroadcastPa
               <button
                 type="button"
                 className={live ? "btn96" : "btn96 btn96-primary"}
-                disabled={!(idle || live)}
+                disabled={!(idle || live) || (idle && videoUnavailable)}
                 onClick={live ? studio.stop : studio.start}
               >
                 {toggleLabel(phase)}

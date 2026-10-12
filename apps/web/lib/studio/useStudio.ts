@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState, type RefObject } from "react";
 import type { PresenceUpdate } from "@solocast/shared";
-import type { ViewerBackend } from "../backend/types";
+import { ApiError, type ViewerBackend } from "../backend/types";
 import { useChat, type ChatFeed } from "../chat/useChat";
 import { BroadcastError, type BrowserBroadcaster, type BroadcastErrorCode } from "./broadcaster";
 import { COUNTERS_REFRESH_MS, isSpeakerCapReached } from "./counters";
@@ -22,7 +22,7 @@ import {
 export type BroadcastMode = "obs" | "browser";
 export type BroadcastPhase = "idle" | "starting" | "live" | "stopping";
 /** Panne de diffusion : erreur au démarrage, ou coupure inattendue (« lost »). */
-export type BroadcastFault = BroadcastErrorCode | "lost";
+export type BroadcastFault = BroadcastErrorCode | "lost" | "sfu_unavailable";
 
 /** Issue d'un réglage : appliqué à chaud, prévu au prochain démarrage, ou échec d'application. */
 export interface SettingNotice {
@@ -192,7 +192,13 @@ export function useStudio(
         await broadcaster.stop().catch(() => undefined);
         phaseRef.current = "idle";
         setPhase("idle");
-        setFault(err instanceof BroadcastError ? err.code : "failed");
+        setFault(
+          err instanceof BroadcastError
+            ? err.code
+            : err instanceof ApiError && err.code === "sfu_unavailable"
+              ? "sfu_unavailable"
+              : "failed",
+        );
       }
     })();
   }, [backend, broadcaster, previewRef]);

@@ -2,6 +2,7 @@ import { CLIENT_EVENTS, SERVER_EVENTS, StageViewerRequestSchema } from "@solocas
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { HttpError } from "../http/errors.js";
+import { viewerMediaGrant } from "../livekit/grants.js";
 import type { RouteDeps } from "./shared-deps.js";
 
 const EmptyBodySchema = z.strictObject({});
@@ -10,7 +11,7 @@ const EmptyBodySchema = z.strictObject({});
 export const STAGE_REQUEST_RATE_LIMIT = { max: 5, timeWindow: 60_000 };
 
 export function registerStageRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  const { authMiddleware, stage, stageNotifier, viewers, revokeSpeaker } = deps;
+  const { authMiddleware, stage, stageNotifier, viewers, revokeSpeaker, livekit } = deps;
 
   app.post(
     "/api/stage/grant",
@@ -19,6 +20,21 @@ export function registerStageRoutes(app: FastifyInstance, deps: RouteDeps): void
       const body = StageViewerRequestSchema.parse(request.body);
       await viewers.assertNotBanned(body.viewerId);
       await stage.grant(body.viewerId);
+      // Le viewer garde sa connexion de spectateur (jeton sans droit de publier) : il faut aussi
+      // élever ses droits CÔTÉ SFU, sinon la publication échoue (« insufficient permissions »).
+      // Absent du SFU (false) ou SFU en panne : le droit est de toute façon repris au prochain
+      // jeton (grantFor lit stage.isSpeaker) ; la parole accordée ne doit pas échouer pour autant.
+      try {
+        await livekit.updateParticipant(body.viewerId, viewerMediaGrant(body.viewerId, true));
+      } catch (error) {
+        request.log.warn(
+          {
+            event: "stage.grant_sfu_failed",
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+          "Droits de publication non mis à jour côté SFU",
+        );
+      }
       await stageNotifier.notify({ event: SERVER_EVENTS.STAGE_GRANTED, viewerId: body.viewerId });
       request.log.info({ event: "stage.granted" }, "Parole accordée");
       return reply.code(204).send();

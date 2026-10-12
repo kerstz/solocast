@@ -4,9 +4,14 @@ Section: video
 Priority: optional
 Architecture: amd64
 Installed-Size: @SIZE@
+Depends: libc6 (>= 2.28), libstdc++6 (>= 5.2), libgcc-s1 | libgcc1, ca-certificates
 Recommends: xdg-utils
-Maintainer: SoloCast <noreply@solocast.invalid>
-Description: Petit site de streaming pour une seule personne
- Un streameur diffuse, les spectateurs regardent et discutent dans le chat.
- Lance un serveur local, ouvre le studio et publie une adresse à partager.
- Embarque Node.js, LiveKit et cloudflared : rien d'autre à installer.
+Maintainer: kerstz <167791613+kerstz@users.noreply.github.com>
+Homepage: https://github.com/kerstz/solocast
+Description: one-person live streaming site (studio, viewer page, chat)
+ SoloCast lets a single streamer go live from the browser; viewers watch
+ and chat. It starts a local server, opens the studio and can publish a
+ shareable public address through a Cloudflare quick tunnel.
+ .
+ Node.js, the LiveKit media server and cloudflared are bundled under
+ /opt/solocast: nothing else needs to be installed.

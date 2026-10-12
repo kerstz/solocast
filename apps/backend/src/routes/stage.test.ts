@@ -117,6 +117,21 @@ describe("POST /api/stage/grant", () => {
     expect(await harness.store.hasSlot(stageSetKey("main"), viewer.viewerId)).toBe(false);
   });
 
+  it("élève aussi les droits côté SFU (audio seulement), sans échouer si le SFU est en panne", async () => {
+    await setup();
+    const viewer = await newViewer();
+    const res = await grantAs(viewer.viewerId);
+    expect(res.statusCode).toBe(204);
+    expect(harness.livekit.updates).toHaveLength(1);
+    expect(harness.livekit.updates[0]?.identity).toBe(viewer.viewerId);
+    expect(harness.livekit.updates[0]?.permission.canPublishAudio).toBe(true);
+    expect(harness.livekit.updates[0]?.permission.canPublishVideo).toBe(false);
+
+    harness.livekit.failUpdates = new Error("sfu down");
+    const second = await newViewer();
+    expect((await grantAs(second.viewerId)).statusCode).toBe(204);
+  });
+
   it("refuse un viewer banni (403) sans poser de grant", async () => {
     const viewer = await newViewer();
     await harness.store.set(banKey(viewer.viewerId), "1", 3600);
@@ -176,12 +191,11 @@ describe("POST /api/stage/revoke", () => {
 
     expect(res.statusCode).toBe(204);
     expect(await harness.store.hasSlot(stageSetKey("main"), viewer.viewerId)).toBe(false);
-    expect(harness.livekit.updates).toEqual([
-      {
-        identity: viewer.viewerId,
-        permission: { canPublishAudio: false, canPublishVideo: false },
-      },
-    ]);
+    // Deux mises à jour : l'octroi (audio permis) puis la révocation (tout coupé).
+    expect(harness.livekit.updates.at(-1)).toEqual({
+      identity: viewer.viewerId,
+      permission: { canPublishAudio: false, canPublishVideo: false },
+    });
     expect(harness.notifier.events.at(-1)).toEqual({
       event: "stage:revoked",
       viewerId: viewer.viewerId,
