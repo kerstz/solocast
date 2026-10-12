@@ -22,10 +22,10 @@ The screenshots are from the mock mode (`NEXT_PUBLIC_BACKEND_MODE=mock`), so the
 
 Download the file for your system from the latest [release](../../releases):
 
-| System | File | Installation |
-|---|---|---|
-| Windows 10/11 (x64) | `SoloCast-Setup-x.y.z.exe` | double-click; installs for the current user, no administrator rights |
-| Debian / Ubuntu (amd64) | `solocast_x.y.z_amd64.deb` | `sudo apt install ./solocast_x.y.z_amd64.deb` |
+| System                  | File                       | Installation                                                         |
+| ----------------------- | -------------------------- | -------------------------------------------------------------------- |
+| Windows 10/11 (x64)     | `SoloCast-Setup-x.y.z.exe` | double-click; installs for the current user, no administrator rights |
+| Debian / Ubuntu (amd64) | `solocast_x.y.z_amd64.deb` | `sudo apt install ./solocast_x.y.z_amd64.deb`                        |
 
 Everything is bundled (Node, the LiveKit video server, cloudflared): nothing else to install, no
 Docker, no configuration file.
@@ -34,14 +34,18 @@ Docker, no configuration file.
 opens the studio in your browser. There is no terminal and no command-line option: everything is
 set from the studio.
 
-- **Sharing**: the *Share* button opens a public `https://….trycloudflare.com` address to send to
+- **Sharing**: the _Share_ button opens a public `https://….trycloudflare.com` address to send to
   your viewers. It changes every time, and your choice is remembered for the next launch. Off by
   default.
 - **Studio**: only the computer running SoloCast can open it. Viewers arriving through the public
   address can only watch and chat.
-- **Quit**: the *Quit SoloCast* button in the studio. Launching the app again while it runs simply
+- **Quit**: the _Quit SoloCast_ button in the studio. Launching the app again while it runs simply
   reopens the studio.
-- Log and settings: `%APPDATA%\SoloCast` (Windows), `~/.config/solocast` (Linux).
+- Settings: `%APPDATA%\SoloCast` (Windows), `~/.config/solocast` (Linux). Log and session state:
+  `%LOCALAPPDATA%\SoloCast-state` (Windows), same folder as the settings (Linux).
+- Windows installs to `%LOCALAPPDATA%\Programs\SoloCast`, no administrator rights. Silent install:
+  `SoloCast-Setup-x.y.z.exe /S`. The uninstaller stops a running SoloCast and keeps your settings
+  unless you tick the box.
 
 Good to know:
 
@@ -54,7 +58,17 @@ Good to know:
   OBS/RTMP needs the LiveKit Ingress (Docker), see §Development.
 - **Windows SmartScreen**: the installer is not signed, so Windows shows a warning the first time
   ("More info", then "Run anyway").
-- **Windows Firewall**: allow `livekit-server.exe` on private networks when it asks.
+- **Windows Firewall**: for viewers outside your network, tick _Allow video for remote viewers_ in the
+  installer (one administrator prompt), or allow `livekit-server.exe` when Windows asks.
+
+## How it is tested
+
+Every release runs, on real machines, before anything is published: the installer is installed
+silently on **Windows (windows-latest)**, launched exactly like the Start menu shortcut, exercised
+(site, API, studio lock-down, chat WebSocket through the proxy, video server, public link), launched
+a second time (must reuse the running instance), quit from the API, then uninstalled **while it is
+running**. The `.deb` goes through the same scenario on **Debian 12, Ubuntu 22.04 and Ubuntu 24.04**,
+including install and removal. See `scripts/smoke.mjs` and `.github/workflows/release.yml`.
 
 ## Code Organization
 
