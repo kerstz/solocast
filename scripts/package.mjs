@@ -80,9 +80,9 @@ if (!/^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$/.test(version))
   throw new Error(`Version invalide : ${version}`);
 
 const run = (cmd, args, options = {}) => execFileSync(cmd, args, { stdio: "inherit", ...options });
-const has = (cmd) => {
+const has = (cmd, probe = ["--version"]) => {
   try {
-    execFileSync(cmd, ["--version"], { stdio: "ignore" });
+    execFileSync(cmd, probe, { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -251,7 +251,8 @@ function buildDeb(staged) {
 }
 
 function buildExe(staged) {
-  if (!has("makensis")) throw new Error("makensis introuvable (apt install nsis / pacman -S nsis)");
+  if (!has("makensis", ["-VERSION"]))
+    throw new Error("makensis introuvable (apt install nsis / pacman -S nsis)");
   const exe = path.join(OUT, `SoloCast-Setup-${version}.exe`);
   run("makensis", [
     "-V2",
