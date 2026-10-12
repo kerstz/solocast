@@ -189,10 +189,12 @@ jobs:
           desktop-file-validate /usr/share/applications/solocast.desktop
           test -x /usr/bin/solocast
           test -f /usr/share/icons/hicolor/256x256/apps/solocast.png
-          test -f /usr/share/doc/solocast/copyright
-          test -f /usr/share/doc/solocast/changelog.gz
-          test -f /usr/share/man/man1/solocast.1.gz
-          (cd / && md5sum -c --quiet /var/lib/dpkg/info/solocast.md5sums)
+          # Les images Docker d'Ubuntu excluent /usr/share/doc et /usr/share/man à l'installation :
+          # on vérifie donc le contenu du paquet lui-même, pas ce que dpkg a posé.
+          for f in usr/share/doc/solocast/copyright usr/share/doc/solocast/changelog.gz usr/share/man/man1/solocast.1.gz; do
+            dpkg-deb -c installers/solocast_*_amd64.deb | grep -q " ./$f$" || { echo "absent du paquet : $f"; exit 1; }
+          done
+          (cd / && md5sum -c --quiet --ignore-missing /var/lib/dpkg/info/solocast.md5sums)
 
           export SOLOCAST_NO_OPEN=1
           nohup solocast > "$RUNNER_TEMP/solocast.out" 2>&1 &
