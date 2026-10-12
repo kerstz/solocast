@@ -165,8 +165,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ["debian:11", "ubuntu:24.04"]
+        image: ["debian:12", "ubuntu:22.04", "ubuntu:24.04"]
     container: ${{ matrix.image }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Outils minimaux
         run: apt-get update && apt-get install -y --no-install-recommends ca-certificates procps desktop-file-utils
@@ -189,7 +192,7 @@ jobs:
           test -f /usr/share/doc/solocast/copyright
           test -f /usr/share/doc/solocast/changelog.gz
           test -f /usr/share/man/man1/solocast.1.gz
-          md5sum -c --quiet /var/lib/dpkg/info/solocast.md5sums
+          (cd / && md5sum -c --quiet /var/lib/dpkg/info/solocast.md5sums)
 
           export SOLOCAST_NO_OPEN=1
           nohup solocast > "$RUNNER_TEMP/solocast.out" 2>&1 &

@@ -81,9 +81,10 @@ VIAddVersionKey /LANG=${LANG_FRENCH} "OriginalFilename" "SoloCast-Setup-${VERSIO
 ; PowerShell 64 bits (Sysnative : cet installeur est un programme 32 bits) et CIM, dont
 ; ExecutablePath reste lisible entre architectures. Le dossier passe par l'environnement : une
 ; apostrophe ou un accent dans le chemin ne casse rien. On attend la fin des processus.
+; Uninstall.exe est exclu : lancé avec _?=<dossier> il tourne depuis $INSTDIR et se tuerait lui-même.
 !macro STOP_SOLOCAST
   System::Call 'kernel32::SetEnvironmentVariable(t "SOLOCAST_DIR", t "$INSTDIR")i'
-  nsExec::ExecToLog `"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$d = $$env:SOLOCAST_DIR.TrimEnd([char]92) + [char]92; $$p = @(Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -and $$_.ExecutablePath.StartsWith($$d, [StringComparison]::OrdinalIgnoreCase) }); foreach ($$x in $$p) { Stop-Process -Id $$x.ProcessId -Force -ErrorAction SilentlyContinue }; foreach ($$x in $$p) { Wait-Process -Id $$x.ProcessId -Timeout 10 -ErrorAction SilentlyContinue }"`
+  nsExec::ExecToLog `"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$d = $$env:SOLOCAST_DIR.TrimEnd([char]92) + [char]92; $$p = @(Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -and $$_.Name -ne 'Uninstall.exe' -and $$_.ExecutablePath.StartsWith($$d, [StringComparison]::OrdinalIgnoreCase) }); foreach ($$x in $$p) { Stop-Process -Id $$x.ProcessId -Force -ErrorAction SilentlyContinue }; foreach ($$x in $$p) { Wait-Process -Id $$x.ProcessId -Timeout 10 -ErrorAction SilentlyContinue }"`
   Pop $0
 !macroend
 
