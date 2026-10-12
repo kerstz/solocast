@@ -1,5 +1,7 @@
 # SoloCast
 
+> **Vibe coded.** Most of this project was written with AI coding assistants (Claude Code), guided by prompts rather than hand-written. Read the code before relying on it for anything sensitive.
+
 A simple streaming site designed for a single user: a streamer broadcasts, viewers watch, and everyone participates in the chat. It features a video player, a real-time chat, and a queue for viewers who want to be invited on screen. The interface is intentionally styled to resemble websites from the early 2000s.
 
 This was created for broadcasting to a small group of people, not as a general-purpose platform. There are no accounts or databases; a simple username is all that's needed to join.
