@@ -11,6 +11,8 @@ import { StudioSection } from "./StudioSection";
 interface BroadcastPanelProps {
   studio: StudioController;
   previewRef: RefObject<HTMLVideoElement>;
+  /** false dans l'application installée : pas de service Ingress, donc pas d'onglet OBS. */
+  obsAvailable: boolean;
 }
 
 const MODES: readonly BroadcastMode[] = ["browser", "obs"];
@@ -32,8 +34,9 @@ function toggleLabel(phase: BroadcastPhase): string {
  * Diffusion : OBS (URL RTMP + clé de flux de l'Ingress LiveKit) ou Navigateur
  * (caméra ou partage d'écran, plus le micro, publiés via livekit-client après token serveur).
  */
-export function BroadcastPanel({ studio, previewRef }: BroadcastPanelProps) {
-  const { mode, phase, fault } = studio;
+export function BroadcastPanel({ studio, previewRef, obsAvailable }: BroadcastPanelProps) {
+  const { phase, fault } = studio;
+  const mode = obsAvailable ? studio.mode : "browser";
   // Demandé au serveur seulement quand l'onglet OBS est affiché.
   const ingest = useIngest(getViewerBackend(), mode === "obs");
   const idle = phase === "idle";
@@ -47,7 +50,12 @@ export function BroadcastPanel({ studio, previewRef }: BroadcastPanelProps) {
 
   return (
     <StudioSection title={STRINGS.studio.broadcastTitle}>
-      <div className="studio-tabs" role="group" aria-label={STRINGS.studio.modes.label}>
+      <div
+        className="studio-tabs"
+        role="group"
+        aria-label={STRINGS.studio.modes.label}
+        hidden={!obsAvailable}
+      >
         {MODES.map((m) => (
           <button
             key={m}

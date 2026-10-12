@@ -28,7 +28,10 @@ const CLIENT_ERROR_MESSAGES: Record<number, { code: string; message: string }> =
   429: { code: "rate_limited", message: "Too many requests, try again later." },
 };
 
-export function registerErrorHandlers(app: FastifyInstance): void {
+export function registerErrorHandlers(
+  app: FastifyInstance,
+  options: { htmlNotFound?: boolean } = {},
+): void {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof HttpError) {
       return reply.code(error.statusCode).send({ error: error.code, message: error.message });
@@ -49,7 +52,15 @@ export function registerErrorHandlers(app: FastifyInstance): void {
     return reply.code(500).send({ error: "internal_error", message: "Internal error." });
   });
 
-  app.setNotFoundHandler((_request, reply) =>
-    reply.code(404).send({ error: "not_found", message: "Route not found." }),
-  );
+  app.setNotFoundHandler((request, reply) => {
+    // Front exporté : une page inconnue (hors /api) reçoit la page 404 du site, pas du JSON.
+    if (
+      options.htmlNotFound === true &&
+      request.method === "GET" &&
+      !request.url.startsWith("/api/")
+    ) {
+      return reply.code(404).sendFile("404.html");
+    }
+    return reply.code(404).send({ error: "not_found", message: "Route not found." });
+  });
 }

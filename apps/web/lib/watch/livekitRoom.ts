@@ -6,6 +6,7 @@ import type {
   Room,
   VideoQuality,
 } from "livekit-client";
+import { resolveLivekitUrl } from "../livekitUrl";
 import { layerFor, type QualityChoice, type ReceivedVideo } from "../player/quality";
 import { WatchRoomError, type WatchHandlers, type WatchRoom, type WatchStatus } from "./room";
 
@@ -88,7 +89,7 @@ export class LiveKitWatchRoom implements WatchRoom {
     });
 
     try {
-      await room.connect(token.livekitUrl, token.token);
+      await room.connect(resolveLivekitUrl(token.livekitUrl), token.token);
     } catch {
       this.room = null;
       this.emitStatus("error");

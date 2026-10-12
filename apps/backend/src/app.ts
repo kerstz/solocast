@@ -2,6 +2,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Redis } from "ioredis";
 import type { Writable } from "node:stream";
@@ -13,7 +14,10 @@ import { createViewerIdentity, VIEWER_SESSION_TTL_SECONDS } from "./auth/viewer-
 import { createChatHub } from "./chat/hub.js";
 import { createMemoryChatServices, type ChatServices } from "./chat/services.js";
 import type { AppConfig } from "./config.js";
-import { registerErrorHandlers } from "./http/errors.js";
+import { HttpError, registerErrorHandlers } from "./http/errors.js";
+import { isLocalRequest } from "./http/local-host.js";
+import type { AppControl } from "./app-control.js";
+import { registerAppRoutes } from "./routes/app.js";
 import { createLiveKitGateway, type LiveKitGateway } from "./livekit/gateway.js";
 import { createViewerCapacity } from "./room/viewer-capacity.js";
 import { registerMeRoutes } from "./routes/me.js";
@@ -45,6 +49,20 @@ export interface BuildAppOptions {
   livekitWebhookVerifier?: LiveKitWebhookVerifier;
   // Coalescence des diffusions de présence (ms). 0 = immédiat (tests).
   presenceCoalesceMs?: number;
+  // Dossier du front exporté (`apps/web/out`). Présent : le backend sert aussi les pages, avec
+  // une CSP adaptée à l'export statique de Next (scripts inline).
+  staticDir?: string;
+  // true : seule la machine locale peut ouvrir le studio (Host localhost). Les visiteurs qui
+  // arrivent par le tunnel public ne peuvent alors que regarder et discuter.
+  studioLocalOnly?: boolean;
+  // Commandes de l'application installée (partage, arrêt). Absent en développement.
+  appControl?: AppControl;
+  // true derrière le tunnel Cloudflare du lanceur : le rate-limit compte l'IP réelle du visiteur
+  // (`cf-connecting-ip`, posé par Cloudflare) au lieu de 127.0.0.1 pour tout le monde.
+  trustCloudflareIp?: boolean;
+  // Origines autorisées (CORS + WebSocket). Ensemble vivant : le lanceur y ajoute l'adresse du
+  // tunnel quand elle apparaît. Défaut : CORS_ORIGIN.
+  origins?: Set<string>;
 }
 
 // Chemins censurés dans les logs : aucun cookie, jeton, clé ou mot de passe ne doit sortir.
@@ -130,20 +148,91 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
 
   await app.register(cookie);
-  await app.register(helmet, { global: true });
+  await app.register(helmet, {
+    global: true,
+    // L'export statique de Next injecte des scripts inline : la CSP par défaut (script-src
+    // 'self') laisserait la page blanche. Le reste reste verrouillé sur l'origine.
+    ...(options.staticDir === undefined
+      ? {}
+      : {
+          contentSecurityPolicy: {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'", "'unsafe-inline'"],
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              imgSrc: ["'self'", "data:", "blob:"],
+              mediaSrc: ["'self'", "blob:"],
+              connectSrc: ["'self'", "ws:", "wss:"],
+              workerSrc: ["'self'", "blob:"],
+              objectSrc: ["'none'"],
+              frameAncestors: ["'none'"],
+              baseUri: ["'self'"],
+            },
+          },
+        }),
+  });
+  const origins = options.origins ?? new Set(config.CORS_ORIGIN);
   await app.register(cors, {
-    origin: [config.CORS_ORIGIN],
+    origin: (origin, callback) => {
+      // Pas d'en-tête Origin (même origine, curl) : pas de CORS à décider.
+      callback(null, origin === undefined || origins.has(origin));
+    },
     credentials: true,
     methods: ["GET", "PUT", "POST"],
   });
   await app.register(rateLimit, {
     global: false,
+    ...(options.trustCloudflareIp === true
+      ? {
+          keyGenerator: (request) => {
+            const forwarded = request.headers["cf-connecting-ip"];
+            return typeof forwarded === "string" && forwarded !== "" ? forwarded : request.ip;
+          },
+        }
+      : {}),
     ...(options.redis === undefined ? {} : { redis: options.redis }),
   });
 
+  // Anti-CSRF : une écriture venant d'une autre origine (page tierce visitée par le streameur)
+  // est refusée, même si le cookie SameSite=Lax voyage (autre port de localhost = même site).
+  // Sans Origin ni Sec-Fetch-Site (curl, webhook LiveKit, tests) : pas un navigateur, on laisse.
+  app.addHook("onRequest", (request, _reply, done) => {
+    const method = request.method;
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+      done();
+      return;
+    }
+    const origin = request.headers.origin;
+    const fetchSite = request.headers["sec-fetch-site"];
+    const crossSite = fetchSite === "cross-site" || fetchSite === "same-site";
+    if ((origin !== undefined && !origins.has(origin)) || (origin === undefined && crossSite)) {
+      done(new HttpError(403, "origin_not_allowed", "Origin not allowed."));
+      return;
+    }
+    done();
+  });
+
+  if (options.studioLocalOnly === true) {
+    app.addHook("onRequest", (request, _reply, done) => {
+      const opensStudio =
+        request.method === "POST" && request.url.split("?")[0] === "/api/studio/open";
+      if (opensStudio && !isLocalRequest(request.headers)) {
+        done(
+          new HttpError(
+            403,
+            "studio_local_only",
+            "The studio can only be opened from the machine running SoloCast.",
+          ),
+        );
+        return;
+      }
+      done();
+    });
+  }
+
   app.decorateRequest("viewer", undefined);
   app.decorate("authMiddleware", authMiddleware);
-  registerErrorHandlers(app);
+  registerErrorHandlers(app, { htmlNotFound: options.staticDir !== undefined });
 
   const routeDeps = {
     streamerAuth,
@@ -171,7 +260,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     store,
     hub,
   };
-  // Liveness probe used by start.sh (and any reverse proxy). No session, no store access.
+  // Liveness probe (launcher, reverse proxy). No session, no store access.
   app.get("/health", async (_request, reply) => reply.send({ status: "ok" }));
 
   registerStudioRoutes(app, routeDeps);
@@ -179,6 +268,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   registerTokenRoutes(app, routeDeps);
   registerStageRoutes(app, routeDeps);
   registerModerationRoutes(app, routeDeps);
+  if (options.appControl !== undefined) {
+    registerAppRoutes(app, routeDeps, options.appControl);
+  }
 
   await registerChatGateway(app, {
     hub,
@@ -187,7 +279,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     capacity,
     store,
     cookies: { streamerName: config.SESSION_COOKIE_NAME, viewerName: config.VIEWER_COOKIE_NAME },
-    allowedOrigin: config.CORS_ORIGIN,
+    allowedOrigins: origins,
     maxPayloadBytes: CHAT_WS_MAX_PAYLOAD_BYTES,
   });
   registerLiveKitWebhookRoutes(app, {
@@ -197,6 +289,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     hub,
     log: app.log,
   });
+
+  // Front exporté : les chemins API/WS/webhooks sont déjà enregistrés plus haut, tout le reste
+  // part vers les fichiers statiques (`/watch` -> `watch/index.html`).
+  if (options.staticDir !== undefined) {
+    await app.register(fastifyStatic, { root: options.staticDir, wildcard: true });
+  }
 
   app.addHook("onReady", (done) => {
     hub.start();

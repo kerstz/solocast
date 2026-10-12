@@ -109,10 +109,7 @@ export function SettingsPanel({ settings, notice, onChange }: SettingsPanelProps
   }));
 
   return (
-    <StudioSection
-      title={STRINGS.studio.settings.title}
-      badge={STRINGS.studio.settings.notPersisted}
-    >
+    <StudioSection title={STRINGS.studio.settings.title} badge={STRINGS.studio.settings.saved}>
       <div className="studio-grid-4">
         <SettingSelect
           id={`${baseId}-source`}

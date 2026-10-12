@@ -23,15 +23,16 @@ export interface ChatGatewayDeps {
   capacity: ViewerCapacity;
   store: KeyValueStore;
   cookies: { streamerName: string; viewerName: string };
-  // Origine unique autorisée pour l'upgrade (CORS_ORIGIN normalisé).
-  allowedOrigin: string;
+  // Origines autorisées pour l'upgrade (CORS_ORIGIN normalisé).
+  allowedOrigins: ReadonlySet<string>;
   maxPayloadBytes: number;
 }
 
 // Authentification AVANT upgrade : origine, puis cookie streameur, puis cookie viewer.
 // Toute erreur part en réponse HTTP (401/403) sur la socket brute : aucune connexion WS n'est créée.
 async function authenticate(request: FastifyRequest, deps: ChatGatewayDeps): Promise<ChatIdentity> {
-  if (request.headers.origin !== deps.allowedOrigin) {
+  const origin = request.headers.origin;
+  if (origin === undefined || !deps.allowedOrigins.has(origin)) {
     throw new HttpError(403, "origin_not_allowed", "Origin not allowed.");
   }
   const studio = await deps.streamerAuth.session(request.cookies[deps.cookies.streamerName]);

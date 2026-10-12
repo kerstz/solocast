@@ -1,4 +1,5 @@
 import type {
+  AppStatus,
   BanRequest,
   IngestResponse,
   MeResponse,
@@ -44,6 +45,15 @@ export interface ViewerBackend {
   openStudio(): Promise<void>;
   /** POST /api/studio/ingest (streamer): RTMP address + stream key of the LiveKit Ingress. */
   getIngest(): Promise<IngestResponse>;
+  /**
+   * GET /api/app/status (streamer, this machine only): sharing state of the installed app.
+   * `null` when the app is not the installed one (dev server, remote browser): hide the panel.
+   */
+  getAppStatus(): Promise<AppStatus | null>;
+  /** POST /api/app/share (streamer): turn the public address on or off. */
+  setShare(enabled: boolean): Promise<AppStatus>;
+  /** POST /api/app/quit (streamer): stops SoloCast on this machine. */
+  quitApp(): Promise<void>;
   /** POST /api/token: server-signed LiveKit token (subscribe-only unless the stage was granted). */
   mintToken(): Promise<TokenResponse>;
   /** Opens the chat socket (/ws). Authenticated by cookie at connection time. */

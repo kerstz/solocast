@@ -67,7 +67,10 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 // ---------------------------------------------------------------------------
 
 export const TokenResponseSchema = z.strictObject({
-  livekitUrl: z.string().regex(/^wss?:\/\/\S+$/, "livekitUrl must start with ws:// or wss://"),
+  // ws(s)://hôte, ou un chemin same-origin (`/`) que le navigateur résout contre sa propre origine.
+  livekitUrl: z
+    .string()
+    .regex(/^(wss?:\/\/|\/)\S*$/, "livekitUrl must start with ws://, wss:// or /"),
   token: z.string().min(1),
   identity: UserIdSchema,
   canPublishVideo: z.boolean(),
@@ -186,3 +189,36 @@ export const ROOM_NAME = "main" as const;
 export const STREAMER_IDENTITY = "streamer" as const;
 export const RoomNameSchema = z.literal(ROOM_NAME);
 export type RoomName = z.infer<typeof RoomNameSchema>;
+
+// ---------------------------------------------------------------------------
+// §5.4 Application installée (GET /api/app/status, POST /api/app/share, POST /api/app/quit)
+// Réservé au streameur, depuis la machine qui fait tourner SoloCast.
+// ---------------------------------------------------------------------------
+
+export const ShareStateSchema = z.enum(["off", "starting", "on", "unavailable"]);
+export type ShareState = z.infer<typeof ShareStateSchema>;
+
+export const AppStatusSchema = z.strictObject({
+  version: z.string().min(1).max(32),
+  // `url` n'est renseignée que lorsque le partage est actif.
+  share: z.strictObject({
+    state: ShareStateSchema,
+    url: z
+      .string()
+      .regex(/^https:\/\/\S+$/)
+      .nullable(),
+  }),
+  // false : le serveur média (LiveKit) n'est pas livré avec cette installation.
+  video: z.boolean(),
+  // true : un service Ingress (OBS/RTMP) est disponible. Faux dans l'installation autonome.
+  ingest: z.boolean(),
+  // Ports à ouvrir sur la box pour que la vidéo atteigne des spectateurs distants.
+  mediaPorts: z.strictObject({
+    tcp: z.number().int().min(1).max(65_535),
+    udp: z.number().int().min(1).max(65_535),
+  }),
+});
+export type AppStatus = z.infer<typeof AppStatusSchema>;
+
+export const SetShareRequestSchema = z.strictObject({ enabled: z.boolean() });
+export type SetShareRequest = z.infer<typeof SetShareRequestSchema>;

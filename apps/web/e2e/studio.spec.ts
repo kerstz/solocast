@@ -69,3 +69,20 @@ test.describe("streamer studio", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+
+test.describe("sharing panel (installed app)", () => {
+  test("turns the public link on, copies it and can quit", async ({ page }) => {
+    await openStudio(page);
+
+    const panel = page.getByRole("region", { name: "Sharing" });
+    await expect(panel.getByText("Sharing is off.")).toBeVisible();
+
+    await panel.getByRole("button", { name: "Share", exact: true }).click();
+    await expect(panel.getByLabel("Public link")).toHaveValue(/^https:\/\/.+trycloudflare\.com$/);
+    await expect(panel.getByRole("button", { name: "Stop sharing" })).toBeVisible();
+
+    await panel.getByRole("button", { name: "Quit SoloCast" }).click();
+    await panel.getByRole("button", { name: "Stop SoloCast and the stream" }).click();
+    await expect(page.getByText("SoloCast has stopped. You can close this tab.")).toBeVisible();
+  });
+});

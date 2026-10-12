@@ -1,0 +1,65 @@
+name: release
+
+# Tag v1.2.3 -> installeurs Windows (.exe) et Debian (.deb) attachés à la release GitHub.
+# Lancement manuel : construit les mêmes fichiers, publiés en artefacts (pas de release).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # version lue dans package.json (packageManager)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      - name: Outils d'empaquetage
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis
+
+      - name: Installeurs
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            node scripts/package.mjs --version "${GITHUB_REF_NAME#v}"
+          else
+            node scripts/package.mjs
+          fi
+
+      - name: Contenu du .deb
+        run: dpkg-deb -c dist/release/*.deb | head -40
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solocast-installers
+          path: dist/release/*
+
+  publish:
+    needs: package
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: solocast-installers
+          path: release
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

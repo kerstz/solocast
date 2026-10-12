@@ -12,32 +12,67 @@ The viewing page: video player, chat, and a button to request to speak.
 
 ![Viewing Page](docs/img/watch.png)
 
-The streamer's studio: browser-based or OBS streaming, capture settings, counters, a queue for viewers requesting to speak (with options to allow or ban), and a read-only chat for moderation.
+The streamer's studio: browser broadcasting, capture settings, counters, a queue for viewers requesting to speak (with options to allow or ban), a read-only chat for moderation, and the sharing controls.
 
 ![Streamer Studio](docs/img/studio.png)
 
 The screenshots are from the mock mode (`NEXT_PUBLIC_BACKEND_MODE=mock`), so the video player is "offline": there's no actual video stream behind it.
 
+## Install and run
+
+Download the file for your system from the latest [release](../../releases):
+
+| System | File | Installation |
+|---|---|---|
+| Windows 10/11 (x64) | `SoloCast-Setup-x.y.z.exe` | double-click; installs for the current user, no administrator rights |
+| Debian / Ubuntu (amd64) | `solocast_x.y.z_amd64.deb` | `sudo apt install ./solocast_x.y.z_amd64.deb` |
+
+Everything is bundled (Node, the LiveKit video server, cloudflared): nothing else to install, no
+Docker, no configuration file.
+
+**SoloCast** then shows up in the Start menu (Windows) or the applications menu (Linux). One click
+opens the studio in your browser. There is no terminal and no command-line option: everything is
+set from the studio.
+
+- **Sharing**: the *Share* button opens a public `https://….trycloudflare.com` address to send to
+  your viewers. It changes every time, and your choice is remembered for the next launch. Off by
+  default.
+- **Studio**: only the computer running SoloCast can open it. Viewers arriving through the public
+  address can only watch and chat.
+- **Quit**: the *Quit SoloCast* button in the studio. Launching the app again while it runs simply
+  reopens the studio.
+- Log and settings: `%APPDATA%\SoloCast` (Windows), `~/.config/solocast` (Linux).
+
+Good to know:
+
+- **Video for remote viewers.** The tunnel carries the site and the chat, not the video stream
+  (WebRTC). For viewers outside your home network to receive video, forward **TCP 7881** and
+  **UDP 7882** on your router to this computer (the studio reminds you). Without it they see the
+  chat but the player stays "offline". This is not possible on every connection (mobile data, some
+  providers). Playing between two machines on the same local network has not been verified.
+- **No OBS in the standalone install**: you broadcast from the browser (camera or screen share).
+  OBS/RTMP needs the LiveKit Ingress (Docker), see §Development.
+- **Windows SmartScreen**: the installer is not signed, so Windows shows a warning the first time
+  ("More info", then "Run anyway").
+- **Windows Firewall**: allow `livekit-server.exe` on private networks when it asks.
+
 ## Code Organization
 
 Monorepo using pnpm:
 
-- `apps/web`: The frontend, built with Next.js.
-- `apps/backend`: The API and the chat's WebSocket server, built with Fastify.
-- `packages/shared`: Shared Zod contracts used by both the frontend and backend.
+- `apps/web`: the frontend, built with Next.js (exported as a static site for the installed app)
+- `apps/backend`: the API, the chat WebSocket and the launcher (`src/launcher/`), built with Fastify
+- `packages/shared`: shared Zod contracts used by both
+- `packaging/` + `scripts/package.mjs`: builds the `.deb` and the `.exe` installer
+- `deploy/docker-compose.yml`: Redis + LiveKit + Ingress, for a server deployment
 
-## Prerequisites
+## Development
 
-- Node >= 20 (tested with 26)
-- pnpm 9 (`npm i -g pnpm@9.15.9`)
-- Docker: Only required for WebRTC video (LiveKit), see the "Video" section.
-- `cloudflared`: Only required for `./start.sh` (to provide a shareable public address).
-
-## Local Setup
+Prerequisites: Node >= 20 (22 recommended) and pnpm 9 (`npm i -g pnpm@9.15.9`).
 
 ```sh
 pnpm install
-cp .env.example .env          # A local .env file is already provided here
+cp .env.example .env
 pnpm dev
 ```
 
@@ -45,61 +80,62 @@ pnpm dev
 - Streamer Studio: http://localhost:3001/studio (no key required: whoever opens the page gets the studio)
 - Backend: http://localhost:3000 (`GET /health`)
 
-Functions without Docker: viewer identity, WebSocket chat, presence detection, request to speak, and moderation. `STATE_BACKEND=memory` keeps all the state within the backend process: **no Redis is needed**. The state is lost on each restart, which is intentional for local development.
+Works without Docker: viewer identity, WebSocket chat, presence, request to speak, moderation.
+`STATE_BACKEND=memory` keeps all the state in the backend process (lost on restart). An
+`apps/web/.env.local` with `NEXT_PUBLIC_BACKEND_MODE=mock` runs the frontend alone, without a
+backend.
 
-## Sharing with a Script (`./start.sh`)
-
-```sh
-./start.sh
-```
-
-This starts the backend (3000), the frontend (3001), a single-origin reverse proxy (8080, `scripts/share-proxy.mjs`), and a `cloudflared` tunnel, then displays the public address:
-
-```
-Address to share: https://<random-words>.trycloudflare.com
-```
-
-Ctrl+C stops all four processes; logs are saved in `.run/`. Additional prerequisite: `cloudflared` must be installed.
-
-**The address is public and password-free:** Anyone who opens it can watch the live stream, participate in the chat, and can open `/studio` to broadcast and moderate. Only share this with trusted individuals, and close it after use – a Cloudflare tunnel changes its address with each launch.
-
-Why a proxy: The frontend, API, and WebSocket must originate from **a single domain**, otherwise the session cookie (SameSite=Lax) won't be followed, and the CORS allowlist won't be able to cover both domains. The script therefore exports `CORS_ORIGIN=<tunnel URL>` and `COOKIE_SECURE=true` before starting the backend, and serves the frontend with `NEXT_PUBLIC_API_BASE_URL=""` and `NEXT_PUBLIC_WS_URL=/ws`.
-
-### Configuration
-
-- `.env` (root): Backend and Docker infrastructure. Read by `apps/backend` (`--env-file`) and by `docker compose`. Never versioned; the commented template is `.env.example`.
-- `apps/web/.env.local`: `NEXT_PUBLIC_*` variables (Next.js only reads the `.env` file from its own directory). Setting `NEXT_PUBLIC_BACKEND_MODE=mock` runs the frontend alone, without the backend or LiveKit.
-
-## Video (LiveKit)
-
-Without LiveKit, the player remains in "Stream offline" mode: the rest of the app functions. To enable video, start the SFU and the RTMP/WHIP ingress:
+Run the installed application as-is from the repository (no package):
 
 ```sh
-docker compose up -d redis livekit ingress
+pnpm launch
 ```
 
-The `LIVEKIT_*` keys in the `.env` file are used by the SFU, the backend (for signed tokens), and the OBS ingress (`rtmp://localhost:1935/x/<stream-key>`). Ports and budgets are documented in `docker-compose.yml`.
+It builds the static site and the launcher bundle, then starts. Without `livekit-server` or
+`cloudflared` next to it (they only come with the packages), video and sharing are unavailable:
+the chat works.
 
-The "live" flag in `presence:update` is only set to `true` when the SFU signals the streamer via the `participant_joined` webhook (the `webhook` block in the `LIVEKIT_CONFIG` of `docker-compose.yml`, pointing to `LIVEKIT_WEBHOOK_URL`). Without this webhook, the studio will still display "ON AIR" as soon as the streamer starts broadcasting, and the viewer will display "LIVE" as soon as they receive the stream – this information is local and potentially inaccurate. Nothing in the interface indicates a live stream unless the server or the browser can prove it.
-
-**The webhook will not work with the default `.env` file.** LiveKit runs in a container and connects to the host using `host.docker.internal` (which is the Docker bridge gateway, e.g., `172.17.0.1`), while `BACKEND_HOST=127.0.0.1` only makes the backend listen on the local loopback interface. To enable it:
+### Video and OBS in development (Docker)
 
 ```sh
-BACKEND_HOST=0.0.0.0 pnpm dev            # The backend also listens on the Docker bridge
-sudo ufw allow in on docker0 to any port 3000   # If a firewall is running (ufw, firewalld…)
+docker compose -f deploy/docker-compose.yml up -d redis livekit ingress
 ```
 
-`BACKEND_HOST=0.0.0.0` exposes the backend to the entire local network: this should only be used on a trusted development machine. Without this setting, only the "live" indicator in the studio remains at `OFFLINE`; the chat, presence, and video on the viewer side function normally.
+The `LIVEKIT_*` keys in `.env` are used by the SFU, the backend (signed tokens) and the OBS ingress
+(`rtmp://localhost:1935/x/<stream-key>`). Ports and budgets are documented in the compose file.
+
+The "live" flag of `presence:update` is `true` only when the SFU reports the streamer through the
+`participant_joined` webhook. Under Docker the container reaches the host through
+`host.docker.internal`: start the backend with `BACKEND_HOST=0.0.0.0` (and allow port 3000 on
+`docker0` if a firewall runs). This is not needed in the installed app, where the SFU runs on the
+same machine.
+
+## Publishing a release
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The `.github/workflows/release.yml` workflow runs lint, types and tests, builds the `.deb` and the
+`.exe` on an Ubuntu runner (`node scripts/package.mjs`), then attaches them to the release with a
+`SHA256SUMS` file. The bundled binaries (Node, LiveKit, cloudflared) are pinned by version and
+SHA-256 in `scripts/package.mjs`. Dry run: start the workflow by hand, the installers come out as
+artifacts.
+
+Build locally: `pnpm package` (needs `dpkg-deb` and `makensis`, i.e. `apt install dpkg nsis` or
+`pacman -S dpkg nsis`).
 
 ## Quality
 
 ```sh
 pnpm lint         # ESLint (root flat config, strict typing)
 pnpm typecheck    # tsc --noEmit on the 3 packages
-pnpm test         # Vitest (184 tests)
+pnpm test         # Vitest
 pnpm format       # Prettier
 pnpm build        # shared + backend (tsc) + web (next build)
+pnpm package      # .deb + .exe in dist/release/
 ```
 
-E2E Playwright (frontend only, backend mocked): `pnpm --filter @solocast/web test:e2e` — 8 tests
-(viewer walkthrough + studio), all passing. The test server is started by Playwright on port 3101 with `NEXT_PUBLIC_BACKEND_MODE=mock`: neither the backend nor LiveKit is required.
+Playwright E2E (frontend only, mock backend): `pnpm --filter @solocast/web test:e2e`
+(viewer walkthrough + studio), all passing. The test server is started by Playwright on port 3101
+with `NEXT_PUBLIC_BACKEND_MODE=mock`: neither the backend nor LiveKit is required.

@@ -2,6 +2,7 @@ import {
   MeResponseSchema,
   SetPseudoRequestSchema,
   ViewerIdSchema,
+  type AppStatus,
   type BanRequest,
   type IngestResponse,
   type MeResponse,
@@ -64,6 +65,20 @@ function toMe(session: MockSession): MeResponse {
 /** Simulated studio cookie: set by openStudio, never persisted beyond the tab. */
 let mockStudioUnlocked = false;
 
+/** Faux état de l'app installée : le partage « s'ouvre » après un court délai. */
+let mockShare: AppStatus["share"] = { state: "off", url: null };
+let mockQuit = false;
+
+function mockAppStatus(): AppStatus {
+  return {
+    version: "mock",
+    share: mockShare,
+    video: true,
+    ingest: true,
+    mediaPorts: { tcp: 7881, udp: 7882 },
+  };
+}
+
 export function createMockBackend(): ViewerBackend {
   return {
     mode: "mock",
@@ -100,6 +115,23 @@ export function createMockBackend(): ViewerBackend {
         url: "rtmp://mock.solocast.invalid:1935/x",
         streamKey: "mock-stream-key-not-real",
       });
+    },
+
+    getAppStatus(): Promise<AppStatus | null> {
+      if (!mockStudioUnlocked || mockQuit) return Promise.resolve(null);
+      return Promise.resolve(mockAppStatus());
+    },
+
+    setShare(enabled: boolean): Promise<AppStatus> {
+      mockShare = enabled
+        ? { state: "on", url: "https://mock-demo-words.trycloudflare.com" }
+        : { state: "off", url: null };
+      return Promise.resolve(mockAppStatus());
+    },
+
+    quitApp(): Promise<void> {
+      mockQuit = true;
+      return Promise.resolve();
     },
 
     mintToken(): Promise<TokenResponse> {

@@ -3,6 +3,8 @@ import {
   changedSettings,
   DEFAULT_STREAM_SETTINGS,
   resolutionDimensions,
+  restoreSettings,
+  serializeSettings,
   SETTING_APPLY_MODE,
   setStreamSetting,
 } from "./settings";
@@ -77,5 +79,28 @@ describe("réglages studio : état et validation", () => {
       "fps",
     ]);
     expect(changedSettings(DEFAULT_STREAM_SETTINGS, DEFAULT_STREAM_SETTINGS)).toEqual([]);
+  });
+});
+
+describe("persistance des réglages", () => {
+  it("restaure ce qui a été sérialisé, sans les périphériques", () => {
+    const custom = {
+      ...DEFAULT_STREAM_SETTINGS,
+      resolution: 720 as const,
+      simulcast: false,
+      cameraId: "cam-1",
+    };
+    const restored = restoreSettings(serializeSettings(custom));
+    expect(restored.resolution).toBe(720);
+    expect(restored.simulcast).toBe(false);
+    expect(restored.cameraId).toBeNull();
+  });
+
+  it("retombe sur les valeurs par défaut si le contenu est invalide", () => {
+    expect(restoreSettings(null)).toEqual(DEFAULT_STREAM_SETTINGS);
+    expect(restoreSettings("pas du json")).toEqual(DEFAULT_STREAM_SETTINGS);
+    expect(restoreSettings(JSON.stringify({ resolution: "9999", fps: 61 }))).toEqual(
+      DEFAULT_STREAM_SETTINGS,
+    );
   });
 });

@@ -10,7 +10,8 @@
     "start": "next start -p ${WEB_PORT:-3001}",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:static": "NEXT_EXPORT=1 NEXT_DIST_DIR=out NEXT_PUBLIC_API_BASE_URL= NEXT_PUBLIC_WS_URL=/ws next build"
   },
   "dependencies": {
     "@solocast/shared": "workspace:*",

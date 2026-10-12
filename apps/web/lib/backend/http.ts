@@ -1,13 +1,16 @@
 import type { ZodType } from "zod";
 import {
+  AppStatusSchema,
   BanRequestSchema,
   IngestResponseSchema,
   MeResponseSchema,
   SetPseudoRequestSchema,
+  SetShareRequestSchema,
   StageViewerRequestSchema,
   TokenResponseSchema,
 } from "@solocast/shared";
 import type {
+  AppStatus,
   BanRequest,
   IngestResponse,
   MeResponse,
@@ -94,6 +97,27 @@ export function createHttpBackend(cfg: HttpConfig): ViewerBackend {
     async getIngest(): Promise<IngestResponse> {
       const res = await call("POST", "/api/studio/ingest");
       return parse(res, IngestResponseSchema);
+    },
+
+    async getAppStatus(): Promise<AppStatus | null> {
+      try {
+        const res = await call("GET", "/api/app/status");
+        return await parse(res, AppStatusSchema);
+      } catch (err) {
+        // 404 : serveur de développement. 403 : navigateur distant. Dans les deux cas, pas de panneau.
+        if (err instanceof ApiError && (err.status === 404 || err.status === 403)) return null;
+        throw err;
+      }
+    },
+
+    async setShare(enabled: boolean): Promise<AppStatus> {
+      const body = SetShareRequestSchema.parse({ enabled });
+      const res = await call("POST", "/api/app/share", body);
+      return parse(res, AppStatusSchema);
+    },
+
+    async quitApp(): Promise<void> {
+      await call("POST", "/api/app/quit", {});
     },
 
     async mintToken(): Promise<TokenResponse> {

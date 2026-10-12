@@ -1,6 +1,7 @@
 import type { TokenResponse } from "@solocast/shared";
 import type * as LiveKitTypes from "livekit-client";
 import { config } from "../config";
+import { resolveLivekitUrl } from "../livekitUrl";
 import { resolutionDimensions, type StreamSettings, type SettingKey } from "./settings";
 
 // Le mock n'est chargé que si le build est en mode mock : la condition est résolue au build
@@ -70,7 +71,7 @@ export class LiveKitBroadcaster implements BrowserBroadcaster {
       handlers.onLost();
     });
 
-    await room.connect(token.livekitUrl, token.token);
+    await room.connect(resolveLivekitUrl(token.livekitUrl), token.token);
 
     const dims = resolutionDimensions(settings.resolution);
     const publishOptions = {
@@ -112,8 +113,7 @@ export class LiveKitBroadcaster implements BrowserBroadcaster {
     const room = this.room;
     const lk = this.lk;
     if (!room || !lk) return undefined;
-    const trackSource =
-      source === "screen" ? lk.Track.Source.ScreenShare : lk.Track.Source.Camera;
+    const trackSource = source === "screen" ? lk.Track.Source.ScreenShare : lk.Track.Source.Camera;
     return room.localParticipant.getTrackPublication(trackSource)?.track;
   }
 

@@ -16,6 +16,11 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   transpilePackages: ["@solocast/shared"],
   poweredByHeader: false,
+  // `NEXT_EXPORT=1` : site 100 % statique (dossier `out/`), servi par le backend dans l'app
+  // installée. Sans cette variable, `next dev` / `next start` restent inchangés.
+  ...(process.env.NEXT_EXPORT === "1"
+    ? { output: "export", trailingSlash: true, images: { unoptimized: true } }
+    : {}),
   webpack: (config, { webpack }) => {
     config.plugins.push(
       new webpack.DefinePlugin({ __MOCK_BACKEND__: JSON.stringify(mockBackend) }),

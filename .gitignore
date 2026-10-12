@@ -20,3 +20,8 @@ playwright-report/
 # Divers
 *.log
 .DS_Store
+
+# Export statique du front (app installée)
+out/
+.next-export/
+.cache/

@@ -1,7 +1,7 @@
 /**
  * Studio capture settings. Pure module: no side effect, no DOM.
- * They are NOT persisted server-side (no settings route exists), so they live in the studio
- * state and are lost on reload.
+ * No server route exists for them: the studio keeps them in this browser (localStorage, see
+ * `serializeSettings` / `restoreSettings`) so a reload or a relaunch finds them again.
  */
 
 export const CAPTURE_SOURCES = ["camera", "screen"] as const;
@@ -121,4 +121,37 @@ export function setStreamSetting(
 /** Settings that actually changed between two states (so only the delta is applied). */
 export function changedSettings(prev: StreamSettings, next: StreamSettings): SettingKey[] {
   return SETTING_KEYS.filter((key) => prev[key] !== next[key]);
+}
+
+/** Device ids are not kept: a camera unplugged since would make the next start fail. */
+const PERSISTED_KEYS = ["source", "resolution", "fps", "maxBitrateKbps", "simulcast"] as const;
+
+export const SETTINGS_STORAGE_KEY = "solocast.studio.settings.v1";
+
+export function serializeSettings(settings: StreamSettings): string {
+  const subset: Record<string, string> = {};
+  for (const key of PERSISTED_KEYS) {
+    const value = settings[key];
+    subset[key] = typeof value === "boolean" ? (value ? "on" : "off") : String(value);
+  }
+  return JSON.stringify(subset);
+}
+
+/** Reads back what `serializeSettings` wrote; anything invalid falls back to the default. */
+export function restoreSettings(raw: string | null): StreamSettings {
+  if (raw === null) return DEFAULT_STREAM_SETTINGS;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return DEFAULT_STREAM_SETTINGS;
+  }
+  if (typeof parsed !== "object" || parsed === null) return DEFAULT_STREAM_SETTINGS;
+  let settings = DEFAULT_STREAM_SETTINGS;
+  for (const key of PERSISTED_KEYS) {
+    const value = (parsed as Record<string, unknown>)[key];
+    if (typeof value !== "string") continue;
+    settings = setStreamSetting(settings, key, value) ?? settings;
+  }
+  return settings;
 }

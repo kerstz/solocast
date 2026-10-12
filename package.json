@@ -15,7 +15,9 @@
     "test": "pnpm -r --if-present test",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "launch": "pnpm --filter @solocast/shared build && pnpm --filter @solocast/web build:static && pnpm --filter @solocast/backend bundle && SOLOCAST_HOME=$PWD/apps/backend/dist node apps/backend/dist/solocast.mjs",
+    "package": "node scripts/package.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

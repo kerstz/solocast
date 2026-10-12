@@ -1,0 +1,12 @@
+Package: solocast
+Version: @VERSION@
+Section: video
+Priority: optional
+Architecture: amd64
+Installed-Size: @SIZE@
+Recommends: xdg-utils
+Maintainer: SoloCast <noreply@solocast.invalid>
+Description: Petit site de streaming pour une seule personne
+ Un streameur diffuse, les spectateurs regardent et discutent dans le chat.
+ Lance un serveur local, ouvre le studio et publie une adresse à partager.
+ Embarque Node.js, LiveKit et cloudflared : rien d'autre à installer.

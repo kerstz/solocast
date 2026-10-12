@@ -5,8 +5,20 @@ import { createTestEnv } from "./test/fakes.js";
 describe("loadConfig", () => {
   it("accepte un environnement valide et normalise CORS_ORIGIN", () => {
     const config = loadConfig(createTestEnv({ CORS_ORIGIN: "http://localhost:3001/" }));
-    expect(config.CORS_ORIGIN).toBe("http://localhost:3001");
+    expect(config.CORS_ORIGIN).toEqual(["http://localhost:3001"]);
     expect(config.COOKIE_SECURE).toBe(false);
+  });
+
+  it("accepte plusieurs origines séparées par des virgules", () => {
+    const config = loadConfig(
+      createTestEnv({ CORS_ORIGIN: "http://localhost:8080, https://abc.trycloudflare.com/" }),
+    );
+    expect(config.CORS_ORIGIN).toEqual(["http://localhost:8080", "https://abc.trycloudflare.com"]);
+  });
+
+  it("accepte un chemin same-origin pour LIVEKIT_PUBLIC_WS_URL", () => {
+    const config = loadConfig(createTestEnv({ LIVEKIT_PUBLIC_WS_URL: "/" }));
+    expect(config.LIVEKIT_PUBLIC_WS_URL).toBe("/");
   });
 
   it("rejette un JWT_SECRET de moins de 32 octets sans révéler la valeur", () => {

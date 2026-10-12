@@ -28,6 +28,10 @@ describe("TokenResponseSchema", () => {
         .success,
     ).toBe(false);
   });
+
+  it("accepte un chemin same-origin comme livekitUrl", () => {
+    expect(TokenResponseSchema.safeParse({ ...validToken, livekitUrl: "/" }).success).toBe(true);
+  });
 });
 
 describe("ChatMessageSchema", () => {

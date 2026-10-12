@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { Writable } from "node:stream";
-import { buildApp } from "../app.js";
+import { buildApp, type BuildAppOptions } from "../app.js";
 import { loadConfig } from "../config.js";
 import {
   FakeLiveKitGateway,
@@ -20,7 +20,10 @@ export interface Harness {
 }
 
 // Construit l'app réelle (config Zod incluse) avec un store mémoire : aucune dépendance réseau.
-export async function createHarness(overrides: Record<string, string> = {}): Promise<Harness> {
+export async function createHarness(
+  overrides: Record<string, string> = {},
+  extra: Partial<BuildAppOptions> = {},
+): Promise<Harness> {
   const env = createTestEnv(overrides);
   const chunks: string[] = [];
   const logStream = new Writable({
@@ -38,6 +41,7 @@ export async function createHarness(overrides: Record<string, string> = {}): Pro
     logStream,
     livekit,
     stageNotifier: notifier,
+    ...extra,
   });
   const names = { streamer: env.SESSION_COOKIE_NAME ?? "", viewer: env.VIEWER_COOKIE_NAME ?? "" };
   return { app, store, env, names, logs: () => chunks.join(""), livekit, notifier };

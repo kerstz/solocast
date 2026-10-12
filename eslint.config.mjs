@@ -10,6 +10,9 @@ export default tseslint.config(
       "**/dist/**",
       "**/.next/**",
       "**/.next-e2e/**",
+      // Export statique du front (build:static) et téléchargements d'empaquetage.
+      "apps/web/out/**",
+      ".cache/**",
       "**/coverage/**",
       "**/node_modules/**",
       "**/test-results/**",
@@ -46,6 +49,8 @@ export default tseslint.config(
   {
     files: ["**/*.mjs", "**/*.js"],
     ...tseslint.configs.disableTypeChecked,
-    languageOptions: { globals: { process: "readonly" } },
+    languageOptions: {
+      globals: { process: "readonly", console: "readonly", fetch: "readonly", Buffer: "readonly" },
+    },
   },
 );

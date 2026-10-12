@@ -19,8 +19,9 @@ const SecretSchema = (name: string, minBytes: number) =>
       message: `${name} still holds the placeholder value from .env.example`,
     });
 
-// Origine unique (schéma://hôte[:port]) pour l'allowlist CORS. Jamais '*', jamais de chemin.
-const CorsOriginSchema = z
+// Origines (schéma://hôte[:port]) de l'allowlist CORS, séparées par des virgules. Jamais '*',
+// jamais de chemin : l'app peut être jointe par localhost, 127.0.0.1 et l'adresse du tunnel.
+const BareOriginSchema = z
   .url({ protocol: /^https?$/ })
   .refine(
     (value) => {
@@ -31,9 +32,19 @@ const CorsOriginSchema = z
         return false;
       }
     },
-    { message: "CORS_ORIGIN must be a bare origin (scheme://host[:port]), with no path" },
+    { message: "CORS_ORIGIN must be bare origins (scheme://host[:port]), with no path" },
   )
   .transform((value) => new URL(value).origin);
+
+const CorsOriginSchema = z
+  .string()
+  .transform((value) =>
+    value
+      .split(",")
+      .map((part) => part.trim())
+      .filter((part) => part !== ""),
+  )
+  .pipe(z.array(BareOriginSchema).min(1));
 
 const CookieNameSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 
@@ -67,7 +78,11 @@ const AppEnvSchema = z
     // API serveur LiveKit (RoomService : updateParticipant). Backend -> SFU uniquement.
     LIVEKIT_URL: z.url({ protocol: /^https?$/ }),
     // URL WebSocket renvoyée au navigateur dans TokenResponse.livekitUrl.
-    LIVEKIT_PUBLIC_WS_URL: z.url({ protocol: /^wss?$/ }),
+    // Un chemin (`/`) vaut « même origine que la page » : le navigateur le résout lui-même.
+    LIVEKIT_PUBLIC_WS_URL: z.union([
+      z.url({ protocol: /^wss?$/ }),
+      z.string().regex(/^\/\S*$/, "LIVEKIT_PUBLIC_WS_URL must be ws(s)://… or a path"),
+    ]),
     LIVEKIT_API_KEY: SecretSchema("LIVEKIT_API_KEY", 1),
     LIVEKIT_API_SECRET: SecretSchema("LIVEKIT_API_SECRET", LIVEKIT_API_SECRET_MIN_BYTES),
     // Durée de vie du token LiveKit (WP7 : TTL court).

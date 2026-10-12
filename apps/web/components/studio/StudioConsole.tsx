@@ -3,12 +3,14 @@
 import { useRef } from "react";
 import { getViewerBackend } from "../../lib/backend";
 import { getBroadcaster } from "../../lib/studio/broadcaster";
+import { useAppControl } from "../../lib/studio/useAppControl";
 import { useStudio } from "../../lib/studio/useStudio";
 import { STRINGS } from "../../lib/i18n/strings";
 import { ChatWindow } from "../chat/ChatWindow";
 import { ScreenGlyph } from "../desk/icons";
 import { MenuBar, TitleBar } from "../desk/WindowChrome";
 import { Taskbar } from "../desk/Taskbar";
+import { AppPanel } from "./AppPanel";
 import { BroadcastPanel } from "./BroadcastPanel";
 import { CountersPanel } from "./CountersPanel";
 import { ScenePanel } from "./ScenePanel";
@@ -21,6 +23,7 @@ import { SettingsPanel } from "./SettingsPanel";
 export function StudioConsole() {
   const previewRef = useRef<HTMLVideoElement>(null);
   const studio = useStudio(getViewerBackend(), getBroadcaster(), previewRef);
+  const app = useAppControl(getViewerBackend());
 
   return (
     <div className="desk studio-desk">
@@ -29,7 +32,12 @@ export function StudioConsole() {
           <TitleBar title={STRINGS.window.studioTitle} closeHref="/" glyph={<ScreenGlyph />} />
           <MenuBar />
           <div className="studio-column">
-            <BroadcastPanel studio={studio} previewRef={previewRef} />
+            <AppPanel app={app} />
+            <BroadcastPanel
+              studio={studio}
+              previewRef={previewRef}
+              obsAvailable={app.status === null || app.status.ingest}
+            />
             <SettingsPanel
               settings={studio.settings}
               notice={studio.settingNotice}

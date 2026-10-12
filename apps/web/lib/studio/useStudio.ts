@@ -10,6 +10,9 @@ import { INITIAL_SCENE_STATE, sceneReducer, type SceneActionKind, type SceneStat
 import {
   changedSettings,
   DEFAULT_STREAM_SETTINGS,
+  restoreSettings,
+  serializeSettings,
+  SETTINGS_STORAGE_KEY,
   SETTING_APPLY_MODE,
   setStreamSetting,
   type SettingKey,
@@ -81,6 +84,17 @@ export function useStudio(
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  // Réglages retrouvés au montage (pas pendant le rendu : le serveur n'a pas de localStorage).
+  useEffect(() => {
+    try {
+      const restored = restoreSettings(window.localStorage.getItem(SETTINGS_STORAGE_KEY));
+      settingsRef.current = restored;
+      setSettings(restored);
+    } catch {
+      // Stockage bloqué (navigation privée) : les réglages par défaut restent.
+    }
+  }, []);
   useEffect(() => {
     presenceRef.current = presence;
   }, [presence]);
@@ -123,6 +137,11 @@ export function useStudio(
       if (!next) return;
       settingsRef.current = next;
       setSettings(next);
+      try {
+        window.localStorage.setItem(SETTINGS_STORAGE_KEY, serializeSettings(next));
+      } catch {
+        // Stockage bloqué : le réglage reste valable pour cette session.
+      }
       if (changedSettings(prev, next).length === 0) return;
 
       // Hors antenne : le réglage attend le prochain démarrage.
