@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import type { AppControlState } from "../../lib/studio/useAppControl";
 import { getViewerBackend } from "../../lib/backend";
 import { getBroadcaster } from "../../lib/studio/broadcaster";
 import { useAppControl } from "../../lib/studio/useAppControl";
@@ -19,10 +20,12 @@ import { SettingsPanel } from "./SettingsPanel";
 /**
  * Panneau de contrôle du streameur : une colonne, zéro scroll de page au desktop.
  * Seul le chat garde sa propre zone de défilement.
+ *
+ * Deux niveaux : ce composant ne garde que le pilotage de l'application (partage, arrêt). Les
+ * panneaux (chat WebSocket, diffusion) vivent dans un enfant qu'on DÉMONTE à l'arrêt : le chat
+ * cesse de se reconnecter et la caméra est coupée.
  */
 export function StudioConsole() {
-  const previewRef = useRef<HTMLVideoElement>(null);
-  const studio = useStudio(getViewerBackend(), getBroadcaster(), previewRef);
   const app = useAppControl(getViewerBackend());
 
   if (app.stopped) {
@@ -40,6 +43,13 @@ export function StudioConsole() {
     );
   }
 
+  return <StudioPanels app={app} />;
+}
+
+function StudioPanels({ app }: { app: AppControlState }) {
+  const previewRef = useRef<HTMLVideoElement>(null);
+  const studio = useStudio(getViewerBackend(), getBroadcaster(), previewRef);
+
   return (
     <div className="desk studio-desk">
       <main className="desk-main studio-main" aria-label={STRINGS.studio.pageLabel}>
@@ -52,7 +62,7 @@ export function StudioConsole() {
               studio={studio}
               previewRef={previewRef}
               obsAvailable={app.loaded && (app.status === null || app.status.ingest)}
-              videoUnavailable={app.status?.video === "unavailable"}
+              videoUnavailable={app.status !== null && app.status.video !== "ready"}
             />
             <SettingsPanel
               settings={studio.settings}

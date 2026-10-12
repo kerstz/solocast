@@ -132,8 +132,10 @@ async function instanceIdAt(port: number): Promise<string | null> {
     const res = await fetch(`http://127.0.0.1:${String(port)}/health`, {
       signal: AbortSignal.timeout(1_500),
     });
-    const body = (await res.json()) as { instance?: unknown };
-    return typeof body.instance === "string" ? body.instance : null;
+    const body = (await res.json()) as { status?: unknown; instance?: unknown };
+    if (body.status !== "ok") return null;
+    // « » : instance d'avant l'identifiant (0.1.0), qui répond mais sans en donner un.
+    return typeof body.instance === "string" ? body.instance : "";
   } catch {
     return null;
   }
@@ -154,12 +156,14 @@ function alive(pid: number): boolean {
  * Sous Windows la comparaison se fait DANS PowerShell, le dossier passant par l'environnement :
  * aucun souci de page de code (« Joël »), de guillemets ni de caractères joker.
  */
-function isOurs(pid: number, home: string): boolean {
+type Ownership = "yes" | "no" | "unknown";
+
+function isOurs(pid: number, home: string): Ownership {
   try {
     if (process.platform === "linux") {
       const exePath = readlinkSync(`/proc/${String(pid)}/exe`);
       const root = path.resolve(home).replace(/\/+$/, "");
-      return exePath.startsWith(`${root}/`);
+      return exePath.startsWith(`${root}/`) ? "yes" : "no";
     }
     if (process.platform === "win32") {
       const out = spawnSync(
@@ -168,21 +172,26 @@ function isOurs(pid: number, home: string): boolean {
           "-NoProfile",
           "-NonInteractive",
           "-Command",
-          `$p=(Get-Process -Id ${String(pid)} -ErrorAction SilentlyContinue).Path; if ($p -and $p.StartsWith($env:SOLOCAST_HOME.TrimEnd([char]92)+[char]92,[StringComparison]::OrdinalIgnoreCase)) {'yes'}`,
+          `$p=(Get-Process -Id ${String(pid)} -ErrorAction SilentlyContinue).Path; if (-not $p) {'gone'} elseif ($p.StartsWith($env:SOLOCAST_HOME.TrimEnd([char]92)+[char]92,[StringComparison]::OrdinalIgnoreCase)) {'yes'} else {'no'}`,
         ],
         {
           encoding: "utf8",
           windowsHide: true,
-          timeout: 10_000,
+          timeout: 20_000,
           env: { ...process.env, SOLOCAST_HOME: path.resolve(home) },
         },
       );
-      return out.stdout.trim() === "yes";
+      const answer = out.stdout.trim();
+      if (answer === "yes") return "yes";
+      // « gone » : le PID n'existe plus (donc rien à tuer, verrou périmé). « no » : autre programme.
+      if (answer === "no" || answer === "gone") return "no";
+      // Pas de réponse (PowerShell lent, bloqué) : on ne conclut pas à un PID recyclé.
+      return "unknown";
     }
   } catch {
-    // illisible : traité comme « pas à nous »
+    // illisible
   }
-  return false;
+  return "unknown";
 }
 
 /**
@@ -196,7 +205,7 @@ async function claimInstance(home: string): Promise<"reused" | "free"> {
       const previous = readInstance(STATE);
       if (previous !== null) {
         for (const pid of previous.children) {
-          if (isOurs(pid, home)) {
+          if (isOurs(pid, home) === "yes") {
             try {
               process.kill(pid, "SIGTERM");
             } catch {
@@ -236,10 +245,16 @@ async function claimInstance(home: string): Promise<"reused" | "free"> {
           return "reused";
         }
         // Le PID du verrou est vivant mais n'est pas un SoloCast de ce dossier : PID recyclé.
-        if (!isOurs(holder, home)) break;
+        // Instance d'avant l'identifiant (0.1.0) : /health répond, c'est bien un SoloCast.
+        if (running !== null && running.id === "" && (await instanceIdAt(running.port)) !== null) {
+          openBrowser(`http://127.0.0.1:${String(running.port)}/studio`);
+          return "reused";
+        }
+        // Le PID du verrou est vivant mais n'est pas un SoloCast de ce dossier : PID recyclé.
+        if (isOurs(holder, home) === "no") break;
         await sleep(300);
       }
-      if (isOurs(holder, home)) {
+      if (isOurs(holder, home) !== "no") {
         throw new Error("SoloCast est déjà en cours de démarrage. Réessayez dans un instant.");
       }
     }
@@ -363,12 +378,13 @@ async function main(): Promise<void> {
   };
 
   // --- Partage (tunnel Cloudflare), pilotable depuis le studio ---------------------------------
-  let shareState: ShareState = hasCloudflared ? "off" : "unavailable";
+  let shareState: ShareState = hasCloudflared ? "off" : "missing";
   let shareUrl: string | null = null;
   let tunnel: Child | null = null;
   // Chaque tentative a un numéro : le résultat d'une tentative remplacée est ignoré.
   let shareGeneration = 0;
   let cancelPending: (() => void) | null = null;
+  let tunnelOnExit: (() => void) | null = null;
 
   const stopShare = (): void => {
     shareGeneration += 1;
@@ -376,17 +392,17 @@ async function main(): Promise<void> {
     if (tunnel !== null) {
       const current = tunnel;
       tunnel = null;
-      current.proc.removeAllListeners("exit");
+      if (tunnelOnExit !== null) current.proc.removeListener("exit", tunnelOnExit);
       current.proc.kill("SIGTERM");
     }
     if (shareUrl !== null) origins.delete(shareUrl);
     shareUrl = null;
-    shareState = hasCloudflared ? "off" : "unavailable";
+    shareState = hasCloudflared ? "off" : "missing";
   };
 
   const startShare = async (): Promise<void> => {
     if (!hasCloudflared) {
-      shareState = "unavailable";
+      shareState = "missing";
       return;
     }
     if (tunnel !== null) return;
@@ -395,7 +411,12 @@ async function main(): Promise<void> {
     const generation = shareGeneration;
     // Config vide : un ~/.cloudflared/config.yml existant ferait refuser le tunnel rapide.
     const emptyConfig = path.join(STATE, "cloudflared.yml");
-    writeFileSync(emptyConfig, "");
+    try {
+      writeFileSync(emptyConfig, "");
+    } catch {
+      shareState = "unavailable";
+      return;
+    }
     const found = await new Promise<string | null>((resolve) => {
       cancelPending = () => {
         resolve(null);
@@ -424,7 +445,7 @@ async function main(): Promise<void> {
       );
       tunnel = child;
       remember(child);
-      child.proc.once("exit", () => {
+      tunnelOnExit = () => {
         clearTimeout(timer);
         resolve(null);
         if (tunnel === child) {
@@ -434,7 +455,8 @@ async function main(): Promise<void> {
           shareUrl = null;
           shareState = "unavailable";
         }
-      });
+      };
+      child.proc.once("exit", tunnelOnExit);
     });
     cancelPending = null;
     // Remplacée entre-temps (coupée ou relancée) : l'état appartient à la tentative en cours.

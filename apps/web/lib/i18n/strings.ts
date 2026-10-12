@@ -154,6 +154,7 @@ export const STRINGS = {
       on: "Anyone with this link can watch and chat. Only this computer can open the studio.",
       unavailable:
         "The public link is not available. Check the internet connection, then press Share again.",
+      missing: "Sharing is not included in this copy of SoloCast.",
       enable: "Share",
       disable: "Stop sharing",
       copy: "Copy link",

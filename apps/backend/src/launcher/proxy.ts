@@ -67,9 +67,15 @@ export function createProxy(targets: ProxyTargets): Server {
     // Une réponse du backend qui n'arrive jamais ne doit pas retenir la connexion client.
     upstream.setTimeout(30_000, () => {
       upstream.destroy();
+      res.destroy();
     });
     upstream.on("error", () => {
-      if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
+      if (res.headersSent) {
+        // Réponse déjà entamée : on ne peut plus la compléter proprement, on coupe.
+        res.destroy();
+        return;
+      }
+      res.writeHead(502, { "content-type": "text/plain" });
       res.end("Upstream not ready.\n");
     });
     req.pipe(upstream);
@@ -78,6 +84,7 @@ export function createProxy(targets: ProxyTargets): Server {
   server.headersTimeout = 15_000;
   server.requestTimeout = 60_000;
   server.keepAliveTimeout = 30_000;
+  // Compte aussi les sockets WebSocket (≈ 2 par spectateur : chat + /rtc).
   server.maxConnections = 1_024;
 
   server.on("upgrade", (req, socket: Socket, head) => {

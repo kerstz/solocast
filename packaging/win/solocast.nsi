@@ -112,6 +112,8 @@ Section "SoloCast (requis)" SecMain
   RMDir /r "$INSTDIR\web"
   RMDir /r "$INSTDIR\licenses"
   Delete "$INSTDIR\solocast.vbs" ; lanceur de la 0.1.0
+  ; Raccourci du Bureau de la 0.1.0 (cible l'ancien .vbs) : recréé par la section suivante si cochée.
+  Delete "$DESKTOP\SoloCast.lnk"
   SetOverwrite on
   File /r "${SRC}\*.*"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -144,8 +146,14 @@ SectionEnd
 ; administrateur une seule fois. Sans règle, Windows peut bloquer la vidéo vers les spectateurs
 ; hors du réseau local (réseau « public »).
 Section /o "Autoriser la vidéo pour les spectateurs distants (pare-feu Windows)" SecFirewall
-  ExecShellWait "runas" "$SYSDIR\cmd.exe" '/c netsh advfirewall firewall delete rule name="${FIREWALL_RULE}" & netsh advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow program="$INSTDIR\livekit-server.exe" enable=yes profile=any' SW_HIDE
-  WriteRegDWORD HKCU "${UNINST_KEY}" "SoloCastFirewallRule" 1
+  ; Deux règles étroites : seulement les ports médias (TCP 7881, UDP 7882) de livekit-server.exe.
+  ExecShellWait "runas" "$SYSDIR\cmd.exe" '/c netsh advfirewall firewall delete rule name="${FIREWALL_RULE}" & netsh advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow program="$INSTDIR\livekit-server.exe" protocol=TCP localport=7881 enable=yes profile=any & netsh advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow program="$INSTDIR\livekit-server.exe" protocol=UDP localport=7882 enable=yes profile=any' SW_HIDE
+  ; Droits refusés (UAC) ou échec : pas de règle, donc pas de drapeau (sinon invite inutile au retrait).
+  nsExec::ExecToStack 'netsh advfirewall firewall show rule name="${FIREWALL_RULE}"'
+  Pop $0
+  ${If} $0 = 0
+    WriteRegDWORD HKCU "${UNINST_KEY}" "SoloCastFirewallRule" 1
+  ${EndIf}
 SectionEnd
 
 Section "-un.SoloCast"
@@ -177,7 +185,7 @@ Section "-un.SoloCast"
 SectionEnd
 
 ; Décochée par défaut : conservée par une désinstallation silencieuse (mise à jour, test).
-Section /o "un.Supprimer aussi mes réglages (%APPDATA%\SoloCast)" SecUnData
+Section /o "un.Supprimer aussi mes réglages et mon journal (%APPDATA%\SoloCast, %LOCALAPPDATA%\SoloCast-state)" SecUnData
   RMDir /r "$APPDATA\SoloCast"
   RMDir /r "$LOCALAPPDATA\SoloCast-state"
 SectionEnd

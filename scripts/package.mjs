@@ -182,12 +182,22 @@ function thirdPartyNotices() {
     const root = packageRootOf(path.resolve(ROOT, "apps/backend", input));
     if (root !== null) roots.add(root);
   }
-  const webPackage = JSON.parse(readFileSync(path.join(ROOT, "apps/web/package.json"), "utf8"));
-  for (const name of Object.keys(webPackage.dependencies ?? {})) {
-    if (name.startsWith("@solocast/")) continue;
-    const dir = path.join(ROOT, "apps/web/node_modules", name);
-    if (existsSync(dir)) roots.add(path.resolve(dir));
-  }
+  // Site : tout le graphe de dépendances de production (livekit-client tire webrtc-adapter, sdp,
+  // loglevel, @livekit/protocol…, React tire scheduler), pas seulement les dépendances directes.
+  const listing = JSON.parse(
+    execFileSync(
+      "pnpm",
+      ["--filter", "@solocast/web", "list", "--prod", "--depth", "Infinity", "--json"],
+      { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+    ),
+  );
+  const walk = (dependencies) => {
+    for (const info of Object.values(dependencies ?? {})) {
+      if (typeof info.path === "string") roots.add(path.resolve(info.path));
+      walk(info.dependencies);
+    }
+  };
+  for (const project of listing) walk(project.dependencies);
 
   const entries = [];
   for (const root of roots) {

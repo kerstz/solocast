@@ -195,7 +195,7 @@ export type RoomName = z.infer<typeof RoomNameSchema>;
 // Réservé au streameur, depuis la machine qui fait tourner SoloCast.
 // ---------------------------------------------------------------------------
 
-export const ShareStateSchema = z.enum(["off", "starting", "on", "unavailable"]);
+export const ShareStateSchema = z.enum(["off", "starting", "on", "unavailable", "missing"]);
 export type ShareState = z.infer<typeof ShareStateSchema>;
 
 export const AppStatusSchema = z.strictObject({

@@ -45,7 +45,9 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             node scripts/package.mjs --version "${GITHUB_REF_NAME#v}"
           else
-            node scripts/package.mjs
+            # Build manuel : jamais le même numéro qu'une release publiée.
+            base="$(node -p "require('./package.json').version")"
+            node scripts/package.mjs --version "${base}-dev.${GITHUB_SHA::7}"
           fi
 
       - name: Contenu du .deb

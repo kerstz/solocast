@@ -19,6 +19,8 @@ Section
   IfFileExists "$EXEDIR\node.exe" +3 0
     MessageBox MB_ICONSTOP "SoloCast est incomplet : réinstallez-le."
     Quit
+  ; Une variable NODE_OPTIONS héritée de l'environnement pourrait casser ou détourner le lancement.
+  System::Call 'kernel32::SetEnvironmentVariable(t "NODE_OPTIONS", p 0)i'
   SetOutPath "$EXEDIR"
   ExecShell "open" "$EXEDIR\node.exe" '"$EXEDIR\solocast.mjs"' SW_HIDE
 SectionEnd

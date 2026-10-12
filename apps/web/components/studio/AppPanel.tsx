@@ -39,7 +39,15 @@ export function AppPanel({ app }: AppPanelProps) {
   const { state, url } = status.share;
   const on = state === "on" && url !== null;
   const hint =
-    state === "unavailable" ? S.unavailable : state === "starting" ? S.starting : on ? S.on : S.off;
+    state === "missing"
+      ? S.missing
+      : state === "unavailable"
+        ? S.unavailable
+        : state === "starting"
+          ? S.starting
+          : on
+            ? S.on
+            : S.off;
 
   const copy = async (): Promise<void> => {
     if (url === null) return;
@@ -56,7 +64,7 @@ export function AppPanel({ app }: AppPanelProps) {
       <p
         className="studio-hint"
         role="status"
-        data-tone={state === "unavailable" ? "error" : undefined}
+        data-tone={state === "unavailable" || state === "missing" ? "error" : undefined}
       >
         {hint}
       </p>
@@ -101,7 +109,7 @@ export function AppPanel({ app }: AppPanelProps) {
         <button
           type="button"
           className={on ? "btn96" : "btn96 btn96-primary"}
-          disabled={busy || state === "starting"}
+          disabled={busy || state === "starting" || state === "missing"}
           onClick={app.toggleShare}
         >
           {on ? S.disable : S.enable}
