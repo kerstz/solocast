@@ -24,6 +24,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      # Les contrats partagés sont consommés via leur dist : à construire avant lint et types.
+      - run: pnpm --filter @solocast/shared build
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
