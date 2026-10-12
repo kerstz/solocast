@@ -1,0 +1,146 @@
+# SoloCast — environnement Docker Compose (WP0).
+#
+# Démarrage : cp .env.example .env  (puis remplacer tous les CHANGE_ME) ; docker compose up -d
+#
+# Ports publiés sur l'hôte (local) :
+#   127.0.0.1:7880        LiveKit signalisation WS/HTTP (navigateur). En prod : derrière Caddy uniquement.
+#   7881/tcp              LiveKit ICE/TCP de repli (WebRTC derrière NAT restrictif).
+#   50000-50100/udp       LiveKit médias WebRTC. À ouvrir sur le pare-feu du VPS.
+#   1935/tcp              Ingress RTMP (OBS -> rtmp://<hôte>:1935/x/<stream-key>).
+#   8085/tcp              Ingress WHIP (HTTP) -> conteneur 8080. Préfixe /w.
+#   7885/udp              Ingress WHIP médias (ICE).
+#
+# NON publiés en prod : Redis 6379, API LiveKit (au-delà de la signalisation via Caddy).
+# Exposition locale (pour `pnpm dev` hors Docker) : décommenter la ligne "ports" de redis.
+# Elle est liée à 127.0.0.1 uniquement. Pas de base SQL : état éphémère en Redis.
+#
+# Budget mémoire/CPU : cf. README §Capacité (cible VPS 2 vCPU / 4 Go). Les limites sont des plafonds.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Définir REDIS_PASSWORD dans .env}
+    # Mot de passe lu depuis l'environnement (jamais écrit dans la ligne de commande de l'hôte).
+    # maxmemory plafonné (§2.5). volatile-lru : seules les clés AVEC TTL sont évincées, donc un
+    # bannissement permanent (clé sans expiration) ne disparaît pas sous pression mémoire.
+    # AOF everysec : les bans survivent à un redémarrage (l'état volatil, lui, est reconstruit).
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 96mb --maxmemory-policy volatile-lru --save "" --appendonly yes --appendfsync everysec --dir /data
+    volumes:
+      - redis_data:/data
+    # ports:
+    #   - "127.0.0.1:6379:6379"   # exposition locale uniquement (dev hors Docker)
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 160m
+    cpus: 0.15
+    security_opt:
+      - no-new-privileges:true
+
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    restart: unless-stopped
+    environment:
+      # Format LiveKit : "<api_key>: <api_secret>" (une seule paire ici).
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Définir LIVEKIT_API_KEY dans .env}: ${LIVEKIT_API_SECRET:?Définir LIVEKIT_API_SECRET dans .env}"
+      # IP annoncée pour ICE. Local : 127.0.0.1 suffit pour un navigateur sur l'hôte.
+      # Ingress (conteneur) doit aussi l'atteindre : mettre l'IP LAN de l'hôte dans .env.
+      NODE_IP: ${LIVEKIT_NODE_IP:-127.0.0.1}
+      # Corps de configuration (flag --config-body). Inline parce que le bloc `webhook` doit
+      # porter la clé API, qui vient de .env et n'a donc rien à faire dans un fichier versionné.
+      # AUCUN secret dans le dépôt : tout est interpolé par Compose depuis .env.
+      LIVEKIT_CONFIG: |
+        port: 7880
+        logging:
+          level: info
+          json: true
+          pion_level: error
+        redis:
+          address: redis:6379
+          password: ${REDIS_PASSWORD:?Définir REDIS_PASSWORD dans .env}
+          db: 1
+        rtc:
+          # Port TCP de repli ICE et plage UDP des médias : mêmes valeurs que `ports` ci-dessous.
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50100
+          # IP annoncée aux clients : injectée via NODE_IP. Ne pas activer use_external_ip sur Docker.
+          use_external_ip: false
+        room:
+          # V1 = une seule room fixe ("main", cf. @solocast/shared ROOM_NAME).
+          # auto_create false : seul le backend la crée (LiveKitGateway.ensureRoom).
+          auto_create: false
+          # Durée de vie d'une room vide. Elle couvre le délai entre « le studio affiche la clé
+          # OBS » (ce qui crée la room) et « OBS commence à pousser » : trop court, l'Ingress se
+          # fait répondre « requested room does not exist » et coupe le flux.
+          empty_timeout: 1800
+          departure_timeout: 20
+          # Participants WebRTC simultanés (streameur + 8 speakers + Ingress + marge, §2.5).
+          max_participants: 16
+        ingress:
+          # Préfixes publiés aux streameurs OBS : ils pointent vers les ports hôte du service
+          # ingress ci-dessous. En prod : domaine RTMPS/HTTPS du VPS.
+          rtmp_base_url: ${LIVEKIT_RTMP_BASE_URL:-rtmp://localhost:1935/x}
+          whip_base_url: ${LIVEKIT_WHIP_BASE_URL:-http://localhost:8085/w}
+        webhook:
+          # Signature des webhooks : même clé que l'API, vérifiée par WebhookReceiver côté backend.
+          api_key: ${LIVEKIT_API_KEY}
+          urls:
+            # Le backend tourne sur l'hôte en local (pnpm dev), d'où host.docker.internal.
+            - ${LIVEKIT_WEBHOOK_URL:-http://host.docker.internal:3000/webhooks/livekit}
+    # Sans les webhooks participant_joined/left, le salon ne passerait jamais « EN DIRECT ».
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "7881:7881/tcp"
+      - "50000-50100:50000-50100/udp"
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 0.8
+    security_opt:
+      - no-new-privileges:true
+
+  ingress:
+    image: livekit/ingress:v1.5.0
+    restart: unless-stopped
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Définir LIVEKIT_API_KEY dans .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Définir LIVEKIT_API_SECRET dans .env}
+      LIVEKIT_WS_URL: ws://livekit:7880
+      # Corps de configuration Ingress (env INGRESS_CONFIG_BODY). Les secrets sont
+      # interpolés par Compose à partir de .env et ne sont jamais écrits dans le dépôt.
+      INGRESS_CONFIG_BODY: |
+        rtmp_port: 1935
+        whip_port: 8080
+        rtc_config:
+          udp_port: 7885
+        redis:
+          address: redis:6379
+          password: ${REDIS_PASSWORD}
+          db: 1
+    ports:
+      - "1935:1935"
+      - "8085:8080"
+      - "7885:7885/udp"
+    depends_on:
+      livekit:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    mem_limit: 768m
+    cpus: 0.9
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  redis_data:

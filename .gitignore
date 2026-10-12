@@ -1,0 +1,22 @@
+# Dépendances et builds
+node_modules/
+dist/
+.next/
+.next-e2e/
+coverage/
+*.tsbuildinfo
+
+# Secrets : jamais versionnés (seul .env.example l'est)
+.env
+.env.*
+!.env.example
+
+# Sorties d'outils (captures, traces Playwright)
+.playwright-mcp/
+.run/
+test-results/
+playwright-report/
+
+# Divers
+*.log
+.DS_Store

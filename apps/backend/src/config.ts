@@ -1,0 +1,144 @@
+import { CHAT_HISTORY_MAX_SIZE, MAX_SPEAKERS, RoomNameSchema } from "@solocast/shared";
+import { z } from "zod";
+
+// Toute la configuration backend passe par ce module. Aucun secret n'a de défaut.
+// Les messages d'erreur citent le nom de la variable, jamais sa valeur.
+
+const JWT_SECRET_MIN_BYTES = 32;
+const PLACEHOLDER_PREFIX = "CHANGE_ME";
+
+const RedisUrlSchema = z.url({ protocol: /^rediss?$/ });
+
+const SecretSchema = (name: string, minBytes: number) =>
+  z
+    .string()
+    .refine((value) => Buffer.byteLength(value, "utf8") >= minBytes, {
+      message: `${name} must be at least ${String(minBytes)} bytes long`,
+    })
+    .refine((value) => !value.startsWith(PLACEHOLDER_PREFIX), {
+      message: `${name} still holds the placeholder value from .env.example`,
+    });
+
+// Origine unique (schéma://hôte[:port]) pour l'allowlist CORS. Jamais '*', jamais de chemin.
+const CorsOriginSchema = z
+  .url({ protocol: /^https?$/ })
+  .refine(
+    (value) => {
+      try {
+        const url = new URL(value);
+        return url.pathname === "/" && url.search === "" && url.hash === "" && url.username === "";
+      } catch {
+        return false;
+      }
+    },
+    { message: "CORS_ORIGIN must be a bare origin (scheme://host[:port]), with no path" },
+  )
+  .transform((value) => new URL(value).origin);
+
+const CookieNameSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+
+const LIVEKIT_API_SECRET_MIN_BYTES = 32;
+const LIVEKIT_TOKEN_TTL_MIN_SECONDS = 60;
+const LIVEKIT_TOKEN_TTL_MAX_SECONDS = 3_600;
+const LIVEKIT_TOKEN_TTL_DEFAULT_SECONDS = 600;
+
+const AppEnvSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]),
+    LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]),
+    BACKEND_HOST: z.string().min(1),
+    BACKEND_PORT: z.coerce.number().int().min(1).max(65_535),
+    // Where ephemeral state lives. `memory` = single process, no Redis (local run, the default).
+    // `redis` = shared state, required as soon as more than one backend instance runs.
+    STATE_BACKEND: z.enum(["memory", "redis"]).default("memory"),
+    REDIS_URL: RedisUrlSchema.optional(),
+    // Signe les JWT de session (streameur et viewer). HS256, >= 32 octets.
+    JWT_SECRET: SecretSchema("JWT_SECRET", JWT_SECRET_MIN_BYTES),
+    CORS_ORIGIN: CorsOriginSchema,
+    COOKIE_SECURE: z.stringbool(),
+    // true derrière un reverse-proxy (Caddy) : sans ça, le rate-limit compte l'IP du proxy pour tous.
+    TRUST_PROXY: z.stringbool().default(false),
+    SESSION_COOKIE_NAME: CookieNameSchema,
+    VIEWER_COOKIE_NAME: CookieNameSchema,
+    // Plafonne POST /api/studio/open : la route n'a pas de clé à forcer, mais prendre la place
+    // du studio en boucle resterait une nuisance.
+    STUDIO_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
+    STUDIO_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1_000).default(60_000),
+    // API serveur LiveKit (RoomService : updateParticipant). Backend -> SFU uniquement.
+    LIVEKIT_URL: z.url({ protocol: /^https?$/ }),
+    // URL WebSocket renvoyée au navigateur dans TokenResponse.livekitUrl.
+    LIVEKIT_PUBLIC_WS_URL: z.url({ protocol: /^wss?$/ }),
+    LIVEKIT_API_KEY: SecretSchema("LIVEKIT_API_KEY", 1),
+    LIVEKIT_API_SECRET: SecretSchema("LIVEKIT_API_SECRET", LIVEKIT_API_SECRET_MIN_BYTES),
+    // Durée de vie du token LiveKit (WP7 : TTL court).
+    LIVEKIT_TOKEN_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(LIVEKIT_TOKEN_TTL_MIN_SECONDS)
+      .max(LIVEKIT_TOKEN_TTL_MAX_SECONDS)
+      .default(LIVEKIT_TOKEN_TTL_DEFAULT_SECONDS),
+    // Room fixe V1 : doit valoir "main" (RoomNameSchema de @solocast/shared).
+    ROOM_NAME: RoomNameSchema,
+    // Viewers simultanés acceptés dans le salon (chat + token LiveKit). Au-delà, le serveur
+    // referme la socket avec WS_CLOSE_CODES.ROOM_FULL et /api/token répond 503.
+    MAX_VIEWERS: z.coerce.number().int().min(1).default(50),
+    // Speakers WebRTC simultanés hors streameur (§2.5). Plafond dur = MAX_SPEAKERS du contrat
+    // partagé : au-delà, la jauge « x/8 » de presence:update ne serait plus représentable.
+    MAX_SPEAKERS: z.coerce.number().int().min(0).max(MAX_SPEAKERS).default(MAX_SPEAKERS),
+    // Anti-abus de POST /api/token (une session SFU coûte de l'egress : cf. §2.5).
+    TOKEN_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
+    TOKEN_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1_000).default(60_000),
+    // Chat WS (WP3) : taille de l'historique Redis et rate-limit par viewerId.
+    CHAT_HISTORY_SIZE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(CHAT_HISTORY_MAX_SIZE)
+      .default(CHAT_HISTORY_MAX_SIZE),
+    CHAT_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(3),
+    CHAT_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(100).default(2_000),
+  })
+  .superRefine((env, ctx) => {
+    if (env.STATE_BACKEND === "redis" && env.REDIS_URL === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["REDIS_URL"],
+        message: "REDIS_URL is required when STATE_BACKEND=redis",
+      });
+    }
+    if (env.NODE_ENV === "production" && !env.COOKIE_SECURE) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["COOKIE_SECURE"],
+        message: "COOKIE_SECURE must be true when NODE_ENV=production",
+      });
+    }
+    if (env.SESSION_COOKIE_NAME === env.VIEWER_COOKIE_NAME) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["VIEWER_COOKIE_NAME"],
+        message: "VIEWER_COOKIE_NAME must differ from SESSION_COOKIE_NAME",
+      });
+    }
+  });
+
+export type AppConfig = z.infer<typeof AppEnvSchema>;
+
+export class ConfigError extends Error {
+  constructor(issues: readonly z.core.$ZodIssue[]) {
+    super(
+      `Invalid configuration: ${issues
+        .map((issue) => `${issue.path.join(".") || "env"} (${issue.message})`)
+        .join("; ")}`,
+    );
+    this.name = "ConfigError";
+  }
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const result = AppEnvSchema.safeParse(env);
+  if (!result.success) {
+    throw new ConfigError(result.error.issues);
+  }
+  return result.data;
+}

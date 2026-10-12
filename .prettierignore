@@ -1,0 +1,8 @@
+node_modules
+dist
+.next
+.next-e2e
+coverage
+pnpm-lock.yaml
+test-results
+playwright-report
