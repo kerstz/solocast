@@ -150,8 +150,8 @@ export async function registerChatGateway(
       websocket: true,
       preValidation: [attachChatIdentity],
     },
-    (connection, request) => {
-      const { socket } = connection;
+    // @fastify/websocket >= 10 : le gestionnaire reçoit directement la WebSocket.
+    (socket, request) => {
       const identity = request.chatIdentity;
       if (identity === undefined) {
         socket.close(1011, "Internal error.");

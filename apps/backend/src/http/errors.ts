@@ -41,12 +41,17 @@ export function registerErrorHandlers(
         .code(400)
         .send({ error: "validation_error", message: describeValidationIssues(error) });
     }
-    if (typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 500) {
-      const mapped = CLIENT_ERROR_MESSAGES[error.statusCode] ?? {
+    // Fastify 5 : l'erreur est typée `unknown` (un hook peut rejeter n'importe quoi).
+    const statusCode: unknown =
+      typeof error === "object" && error !== null
+        ? (error as { statusCode?: unknown }).statusCode
+        : undefined;
+    if (typeof statusCode === "number" && statusCode >= 400 && statusCode < 500) {
+      const mapped = CLIENT_ERROR_MESSAGES[statusCode] ?? {
         code: "bad_request",
         message: "Invalid request.",
       };
-      return reply.code(error.statusCode).send({ error: mapped.code, message: mapped.message });
+      return reply.code(statusCode).send({ error: mapped.code, message: mapped.message });
     }
     request.log.error({ err: error }, "Erreur interne");
     return reply.code(500).send({ error: "internal_error", message: "Internal error." });

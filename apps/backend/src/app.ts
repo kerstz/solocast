@@ -345,10 +345,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     await app.register(fastifyStatic, {
       root: options.staticDir,
       wildcard: true,
-      setHeaders: (res, filePath) => {
+      setHeaders: (reply, filePath) => {
         // Fichiers au nom haché de Next : jamais modifiés, donc cachables à vie.
         if (/[\\/]_next[\\/]static[\\/]/.test(filePath)) {
-          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          reply.header("Cache-Control", "public, max-age=31536000, immutable");
         }
       },
     });
