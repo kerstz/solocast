@@ -19,3 +19,10 @@ export function isLocalRequest(headers: IncomingHttpHeaders): boolean {
   if (headers["cf-connecting-ip"] !== undefined || headers["cf-ray"] !== undefined) return false;
   return isLocalHost(headers.host);
 }
+
+/** true si l'adresse de connexion TCP est celle de cette machine (IPv4, IPv6, IPv4 mappée). */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (address === undefined) return false;
+  const normalized = address.toLowerCase().replace(/^::ffff:/, "");
+  return normalized === "::1" || /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}

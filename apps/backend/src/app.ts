@@ -9,13 +9,14 @@ import type { Writable } from "node:stream";
 import { WebhookReceiver } from "livekit-server-sdk";
 import { createAuthMiddleware } from "./auth/middleware.js";
 import { createStreamerAuth } from "./auth/streamer-auth.js";
+import { createStudioKeyVerifier } from "./auth/studio-key.js";
 import { createTokenCodec } from "./auth/tokens.js";
 import { createViewerIdentity, VIEWER_SESSION_TTL_SECONDS } from "./auth/viewer-identity.js";
 import { createChatHub } from "./chat/hub.js";
 import { createMemoryChatServices, type ChatServices } from "./chat/services.js";
 import type { AppConfig } from "./config.js";
 import { HttpError, registerErrorHandlers } from "./http/errors.js";
-import { isLocalHost, isLocalRequest } from "./http/local-host.js";
+import { isLocalHost, isLocalRequest, isLoopbackAddress } from "./http/local-host.js";
 import type { AppControl } from "./app-control.js";
 import { registerAppRoutes } from "./routes/app.js";
 import { createLiveKitGateway, type LiveKitGateway } from "./livekit/gateway.js";
@@ -222,11 +223,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     done();
   });
 
-  if (options.studioLocalOnly === true) {
+  // Studio réservé à cette machine : lanceur (studioLocalOnly) ou STUDIO_ACCESS=local. En mode
+  // local, l'adresse TCP doit aussi être loopback : l'en-tête Host seul se forge depuis le réseau.
+  const studioLocal = options.studioLocalOnly === true || config.STUDIO_ACCESS === "local";
+  const requireLoopbackPeer = config.STUDIO_ACCESS === "local";
+  if (studioLocal) {
     app.addHook("onRequest", (request, _reply, done) => {
       const opensStudio =
         request.method === "POST" && request.url.split("?")[0] === "/api/studio/open";
-      if (opensStudio && !isLocalRequest(request.headers)) {
+      const local =
+        isLocalRequest(request.headers) &&
+        (!requireLoopbackPeer || isLoopbackAddress(request.socket.remoteAddress));
+      if (opensStudio && !local) {
         done(
           new HttpError(
             403,
@@ -253,6 +261,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       streamerName: config.SESSION_COOKIE_NAME,
       viewerName: config.VIEWER_COOKIE_NAME,
     },
+    // Mode `key` : POST /api/studio/open exige STUDIO_KEY (vérifiée en temps constant).
+    verifyStudioKey:
+      config.STUDIO_ACCESS === "key" && config.STUDIO_KEY !== undefined
+        ? createStudioKeyVerifier(config.STUDIO_KEY)
+        : undefined,
     studioRateLimit: {
       max: config.STUDIO_RATE_LIMIT_MAX,
       timeWindow: config.STUDIO_RATE_LIMIT_WINDOW_MS,

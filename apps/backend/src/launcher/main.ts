@@ -530,6 +530,8 @@ async function main(): Promise<void> {
     LIVEKIT_API_SECRET: keys.secret,
     ROOM_NAME: "main",
     MAX_VIEWERS: "15",
+    // Studio réservé à cette machine : le proxy et le backend n'écoutent que sur 127.0.0.1.
+    STUDIO_ACCESS: "local",
   });
   const app = await buildApp({
     config,

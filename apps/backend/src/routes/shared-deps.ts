@@ -13,6 +13,8 @@ export interface RouteDeps {
   viewers: ViewerIdentityService;
   authMiddleware: AuthMiddleware;
   cookies: { secure: boolean; streamerName: string; viewerName: string };
+  // Défini en mode STUDIO_ACCESS=key : vérifie la clé saisie à l'ouverture du studio.
+  verifyStudioKey: ((candidate: string | undefined) => boolean) | undefined;
   studioRateLimit: { max: number; timeWindow: number };
   tokenRateLimit: { max: number; timeWindow: number };
   livekit: LiveKitGateway;

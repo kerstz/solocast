@@ -77,6 +77,7 @@ export function createTestEnv(overrides: Record<string, string> = {}): NodeJS.Pr
     COOKIE_SECURE: "false",
     SESSION_COOKIE_NAME: "sc_session",
     VIEWER_COOKIE_NAME: "sc_viewer",
+    STUDIO_ACCESS: "local",
     STUDIO_RATE_LIMIT_MAX: "30",
     STUDIO_RATE_LIMIT_WINDOW_MS: "60000",
     LIVEKIT_URL: "http://127.0.0.1:7880",

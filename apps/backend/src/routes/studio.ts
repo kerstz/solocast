@@ -7,11 +7,14 @@ import { HttpError } from "../http/errors.js";
 import type { RouteDeps } from "./shared-deps.js";
 
 const EmptyBodySchema = z.strictObject({});
+// Corps de POST /api/studio/open : la clé n'est lue qu'en mode STUDIO_ACCESS=key.
+const OpenStudioBodySchema = z.strictObject({ key: z.string().max(256).optional() });
 
 /**
- * Routes de session studio. Aucune clé d'entrée : POST /api/studio/open pose le cookie studio et
- * prend la place (le bail du détenteur précédent est écarté) ; POST /api/studio/close rend cookie
- * et bail. Le cookie reste la seule autorité des routes streameur (grant / revoke / ban / ingest).
+ * Routes de session studio. POST /api/studio/open exige la clé STUDIO_KEY en mode `key` (ou une
+ * requête locale en mode `local`, filtrée dans app.ts), pose le cookie studio et prend la place
+ * (le bail du détenteur précédent est écarté) ; POST /api/studio/close rend cookie et bail. Le
+ * cookie reste la seule autorité des routes streameur (grant / revoke / ban / ingest).
  */
 export function registerStudioRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { streamerAuth, cookies } = deps;
@@ -20,7 +23,11 @@ export function registerStudioRoutes(app: FastifyInstance, deps: RouteDeps): voi
     "/api/studio/open",
     { config: { rateLimit: deps.studioRateLimit } },
     async (request, reply) => {
-      EmptyBodySchema.parse(request.body ?? {});
+      const body = OpenStudioBodySchema.parse(request.body ?? {});
+      if (deps.verifyStudioKey !== undefined && !deps.verifyStudioKey(body.key)) {
+        request.log.warn({ event: "studio.key_rejected" }, "Studio key rejected");
+        throw new HttpError(401, "studio_key_required", "A valid studio key is required.");
+      }
       const token = await streamerAuth.open(request.cookies[cookies.streamerName]);
       reply.setCookie(
         cookies.streamerName,

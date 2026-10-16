@@ -48,6 +48,19 @@ const CorsOriginSchema = z
 
 const CookieNameSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 
+const STUDIO_KEY_MIN_BYTES = 32;
+
+// Adresse d'écoute réservée à cette machine. Tout le reste (0.0.0.0, IP LAN, nom DNS) expose le
+// backend au réseau : le studio doit alors être protégé par une clé.
+export function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    /^127(?:\.\d{1,3}){3}$/.test(normalized)
+  );
+}
+
 const LIVEKIT_API_SECRET_MIN_BYTES = 32;
 const LIVEKIT_TOKEN_TTL_MIN_SECONDS = 60;
 const LIVEKIT_TOKEN_TTL_MAX_SECONDS = 3_600;
@@ -71,8 +84,13 @@ const AppEnvSchema = z
     TRUST_PROXY: z.stringbool().default(false),
     SESSION_COOKIE_NAME: CookieNameSchema,
     VIEWER_COOKIE_NAME: CookieNameSchema,
-    // Plafonne POST /api/studio/open : la route n'a pas de clé à forcer, mais prendre la place
-    // du studio en boucle resterait une nuisance.
+    // Accès au studio. `key` (défaut) : POST /api/studio/open exige STUDIO_KEY. `local` : le
+    // studio ne s'ouvre que depuis cette machine (adresse de connexion ET Host loopback) ; refusé
+    // au démarrage si le backend écoute ailleurs que sur loopback ou derrière un reverse-proxy.
+    STUDIO_ACCESS: z.enum(["key", "local"]).default("key"),
+    // Clé d'entrée du studio en mode `key` (>= 32 octets aléatoires : openssl rand -hex 32).
+    STUDIO_KEY: SecretSchema("STUDIO_KEY", STUDIO_KEY_MIN_BYTES).optional(),
+    // Plafonne POST /api/studio/open (anti-force brute de la clé, anti-prise de place en boucle).
     STUDIO_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
     STUDIO_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1_000).default(60_000),
     // API serveur LiveKit (RoomService : updateParticipant). Backend -> SFU uniquement.
@@ -126,6 +144,30 @@ const AppEnvSchema = z
         code: "custom",
         path: ["COOKIE_SECURE"],
         message: "COOKIE_SECURE must be true when NODE_ENV=production",
+      });
+    }
+    if (env.STUDIO_ACCESS === "key" && env.STUDIO_KEY === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["STUDIO_KEY"],
+        message:
+          "STUDIO_KEY is required when STUDIO_ACCESS=key (or set STUDIO_ACCESS=local on a loopback-only backend)",
+      });
+    }
+    if (env.STUDIO_ACCESS === "local" && !isLoopbackHost(env.BACKEND_HOST)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["STUDIO_ACCESS"],
+        message:
+          "STUDIO_ACCESS=local requires a loopback BACKEND_HOST; set STUDIO_ACCESS=key and STUDIO_KEY to listen on the network",
+      });
+    }
+    if (env.STUDIO_ACCESS === "local" && env.TRUST_PROXY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["STUDIO_ACCESS"],
+        message:
+          "STUDIO_ACCESS=local cannot be used behind a reverse proxy (TRUST_PROXY=true); use STUDIO_ACCESS=key",
       });
     }
     if (env.SESSION_COOKIE_NAME === env.VIEWER_COOKIE_NAME) {
