@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReportReason } from "@solocast/shared";
 import type { ChatFeed } from "../../lib/chat/useChat";
 import type { ChatConnectionStatus } from "../../lib/chat/chatClient";
 import { STRINGS } from "../../lib/i18n/strings";
@@ -10,6 +11,8 @@ import { ChatMessageList } from "./ChatMessageList";
 
 export interface ChatViewer {
   pseudo: string;
+  /** Identifiant de session : exclut ses propres messages du signalement. */
+  viewerId?: string;
 }
 
 interface ChatWindowProps {
@@ -18,6 +21,8 @@ interface ChatWindowProps {
   viewer: ChatViewer | null;
   /** Studio : lecture seule (pas de saisie, pas d'invite pseudo). La modération passe par la scène. */
   readOnly?: boolean;
+  /** Signalement d'un message (POST /api/report). Absent : pas de bouton « Report ». */
+  onReport?: (messageId: string, reason: ReportReason) => Promise<void>;
 }
 
 function statusLine(status: ChatConnectionStatus): string | null {
@@ -35,7 +40,7 @@ function statusLine(status: ChatConnectionStatus): string | null {
 }
 
 /** Fenêtre chat : titre rouge, liste (sunken), saisie, notes slow-mode. */
-export function ChatWindow({ feed, viewer, readOnly = false }: ChatWindowProps) {
+export function ChatWindow({ feed, viewer, readOnly = false, onReport }: ChatWindowProps) {
   const online = feed.presence?.count ?? null;
   // Une fin définitive dit pourquoi (salon plein, ban, flood) plutôt que « chat indisponible ».
   const terminalLine = feed.terminated === null ? null : STRINGS.chat.terminated[feed.terminated];
@@ -53,7 +58,11 @@ export function ChatWindow({ feed, viewer, readOnly = false }: ChatWindowProps) 
       </div>
 
       <div className="bevel-in chat-log-wrap" style={{ margin: 5 }}>
-        <ChatMessageList messages={feed.messages} />
+        <ChatMessageList
+          messages={feed.messages}
+          {...(onReport && viewer ? { onReport } : {})}
+          selfId={viewer?.viewerId ?? null}
+        />
       </div>
 
       {line ? (

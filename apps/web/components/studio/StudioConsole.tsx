@@ -14,6 +14,7 @@ import { Taskbar } from "../desk/Taskbar";
 import { AppPanel } from "./AppPanel";
 import { BroadcastPanel } from "./BroadcastPanel";
 import { CountersPanel } from "./CountersPanel";
+import { ReportsPanel } from "./ReportsPanel";
 import { ScenePanel } from "./ScenePanel";
 import { SettingsPanel } from "./SettingsPanel";
 
@@ -76,6 +77,7 @@ function StudioPanels({ app }: { app: AppControlState }) {
               publishing={studio.phase === "live"}
             />
             <ScenePanel studio={studio} />
+            <ReportsPanel />
             <div className="studio-chat">
               <ChatWindow feed={studio.chat} viewer={null} readOnly />
             </div>

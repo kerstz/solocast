@@ -1,11 +1,14 @@
 import {
   MeResponseSchema,
   SetPseudoRequestSchema,
+  ReportRequestSchema,
   ViewerIdSchema,
   type AppStatus,
   type BanRequest,
   type IngestResponse,
   type MeResponse,
+  type Report,
+  type ReportRequest,
   type SetPseudoRequest,
   type TokenResponse,
   type ViewerColor,
@@ -69,6 +72,9 @@ let mockStudioUnlocked = false;
 let mockShare: AppStatus["share"] = { state: "off", url: null };
 let mockQuit = false;
 
+/** Signalements mock (file en mémoire, comme le vrai serveur : perdus au rechargement). */
+let mockReports: Report[] = [];
+
 function mockAppStatus(): AppStatus {
   return {
     version: "mock",
@@ -101,7 +107,7 @@ export function createMockBackend(): ViewerBackend {
       return Promise.resolve(toMe(next));
     },
 
-    openStudio(): Promise<void> {
+    openStudio(_key?: string): Promise<void> {
       // Même contrat que le vrai serveur : l'ouverture prend la place, sans clé.
       mockStudioUnlocked = true;
       return Promise.resolve();
@@ -174,6 +180,40 @@ export function createMockBackend(): ViewerBackend {
 
     banViewer(input: BanRequest): Promise<void> {
       mockRevokeSpeaker(input.viewerId);
+      return Promise.resolve();
+    },
+
+    reportMessage(input: ReportRequest): Promise<void> {
+      const body = ReportRequestSchema.parse(input);
+      const reporterId = readSession().viewerId;
+      const duplicate = mockReports.some(
+        (r) => r.reporterId === reporterId && r.messageId === body.messageId,
+      );
+      if (!duplicate) {
+        mockReports = [
+          ...mockReports,
+          {
+            id: randomId(),
+            messageId: body.messageId,
+            reason: body.reason,
+            details: body.details ?? null,
+            ts: Date.now(),
+            reporterId,
+            message: null,
+          },
+        ];
+      }
+      return Promise.resolve();
+    },
+
+    listReports(): Promise<Report[]> {
+      if (!mockStudioUnlocked) return Promise.reject(new ApiError(403, "forbidden"));
+      return Promise.resolve([...mockReports]);
+    },
+
+    dismissReport(id: string): Promise<void> {
+      if (!mockStudioUnlocked) return Promise.reject(new ApiError(403, "forbidden"));
+      mockReports = mockReports.filter((r) => r.id !== id);
       return Promise.resolve();
     },
   };

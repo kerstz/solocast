@@ -222,3 +222,45 @@ export type AppStatus = z.infer<typeof AppStatusSchema>;
 
 export const SetShareRequestSchema = z.strictObject({ enabled: z.boolean() });
 export type SetShareRequest = z.infer<typeof SetShareRequestSchema>;
+
+// ---------------------------------------------------------------------------
+// Signalement de messages (POST /api/report, GET /api/moderation/reports)
+// ---------------------------------------------------------------------------
+
+export const REPORT_REASONS = ["spam", "harassment", "illegal", "other"] as const;
+export const ReportReasonSchema = z.enum(REPORT_REASONS);
+export type ReportReason = z.infer<typeof ReportReasonSchema>;
+
+export const REPORT_DETAILS_MAX_LENGTH = 300;
+
+// Corps strict : le viewer ne choisit ni l'identité du signaleur ni le contenu copié.
+export const ReportRequestSchema = z.strictObject({
+  messageId: z.string().min(1).max(64),
+  reason: ReportReasonSchema,
+  details: z.string().trim().min(1).max(REPORT_DETAILS_MAX_LENGTH).optional(),
+});
+export type ReportRequest = z.infer<typeof ReportRequestSchema>;
+
+export const ReportSchema = z.strictObject({
+  id: z.string().min(1).max(64),
+  messageId: z.string().min(1).max(64),
+  reason: ReportReasonSchema,
+  details: z.string().max(REPORT_DETAILS_MAX_LENGTH).nullable(),
+  // Horodatage du signalement (ms epoch).
+  ts: z.number().int().nonnegative(),
+  reporterId: UserIdSchema,
+  // Copie du message signalé si retrouvé dans l'historique du chat, sinon null.
+  message: z
+    .strictObject({
+      userId: UserIdSchema,
+      pseudo: PseudoSchema,
+      text: z.string().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
+    })
+    .nullable(),
+});
+export type Report = z.infer<typeof ReportSchema>;
+
+export const ReportListResponseSchema = z.strictObject({
+  reports: z.array(ReportSchema),
+});
+export type ReportListResponse = z.infer<typeof ReportListResponseSchema>;

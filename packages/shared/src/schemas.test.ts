@@ -3,6 +3,8 @@ import {
   ChatMessageSchema,
   ChatTextSchema,
   PresenceUpdateSchema,
+  ReportListResponseSchema,
+  ReportRequestSchema,
   SetPseudoRequestSchema,
   TokenResponseSchema,
 } from "./schemas.js";
@@ -135,5 +137,37 @@ describe("contrats viewer / studio (ajouts front)", () => {
     expect(ChatTextSchema.safeParse("<b>gras</b>").success).toBe(false);
     expect(ChatTextSchema.safeParse("ligne\nune").success).toBe(false);
     expect(ChatTextSchema.safeParse("x".repeat(501)).success).toBe(false);
+  });
+});
+
+describe("report schemas", () => {
+  it("accepts a minimal report request and rejects unknown reasons, extras and long details", () => {
+    expect(ReportRequestSchema.safeParse({ messageId: "m1", reason: "spam" }).success).toBe(true);
+    expect(ReportRequestSchema.safeParse({ messageId: "m1", reason: "nope" }).success).toBe(false);
+    expect(
+      ReportRequestSchema.safeParse({ messageId: "m1", reason: "spam", reporterId: "x" }).success,
+    ).toBe(false);
+    expect(
+      ReportRequestSchema.safeParse({ messageId: "m1", reason: "other", details: "x".repeat(301) })
+        .success,
+    ).toBe(false);
+  });
+
+  it("validates a report list with and without the message copy", () => {
+    const base = {
+      id: "r1",
+      messageId: "m1",
+      reason: "harassment",
+      details: null,
+      ts: 1,
+      reporterId: "u1",
+    };
+    const parsed = ReportListResponseSchema.safeParse({
+      reports: [
+        { ...base, message: null },
+        { ...base, id: "r2", message: { userId: "u2", pseudo: "Troll", text: "hi" } },
+      ],
+    });
+    expect(parsed.success).toBe(true);
   });
 });

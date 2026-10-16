@@ -1,10 +1,11 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import type { ChatMessage } from "@solocast/shared";
+import type { ChatMessage, ReportReason } from "@solocast/shared";
 import { STRINGS } from "../../lib/i18n/strings";
 import { LinkifiedText } from "./LinkifiedText";
 import { StreamerStar } from "../desk/icons";
+import { ReportControl } from "./ReportControl";
 
 /** Distance (px) sous laquelle on considère être « en bas » : auto-scroll actif. */
 const STICK_THRESHOLD_PX = 40;
@@ -12,13 +13,17 @@ const DEFAULT_NICK_COLOR = "#0000cc";
 
 interface ChatMessageListProps {
   messages: readonly ChatMessage[];
+  /** Absent : pas de signalement (studio). */
+  onReport?: (messageId: string, reason: ReportReason) => Promise<void>;
+  /** viewerId du lecteur : ses propres messages ne se signalent pas. */
+  selfId?: string | null;
 }
 
 /**
  * Liste de messages : auto-scroll tant que l'utilisateur est en bas,
  * sinon compteur « nouveaux messages ». Zone focusable au clavier (scroll ↑↓ PgUp PgDn).
  */
-export function ChatMessageList({ messages }: ChatMessageListProps) {
+export function ChatMessageList({ messages, onReport, selfId = null }: ChatMessageListProps) {
   const logRef = useRef<HTMLOListElement>(null);
   const stuckRef = useRef(true);
   const lastCountRef = useRef(0);
@@ -82,6 +87,12 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
               </span>
               <span className="chat-colon">: </span>
               <LinkifiedText text={m.text} />
+              {onReport && !m.isStreamer && m.userId !== selfId ? (
+                <>
+                  {" "}
+                  <ReportControl pseudo={m.pseudo} onReport={(reason) => onReport(m.id, reason)} />
+                </>
+              ) : null}
             </li>
           ))
         )}

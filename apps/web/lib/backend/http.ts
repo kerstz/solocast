@@ -4,6 +4,8 @@ import {
   BanRequestSchema,
   IngestResponseSchema,
   MeResponseSchema,
+  ReportListResponseSchema,
+  ReportRequestSchema,
   SetPseudoRequestSchema,
   SetShareRequestSchema,
   StageViewerRequestSchema,
@@ -14,6 +16,8 @@ import type {
   BanRequest,
   IngestResponse,
   MeResponse,
+  Report,
+  ReportRequest,
   SetPseudoRequest,
   TokenResponse,
 } from "@solocast/shared";
@@ -23,6 +27,23 @@ import { ApiError, type ApiErrorCode, type ViewerBackend } from "./types";
 interface HttpConfig {
   apiBaseUrl: string;
   wsUrl: string;
+}
+
+/**
+ * Code d'erreur front. Le corps d'erreur n'est jamais affiché : seul le code stable
+ * `studio_key_required` (401) est reconnu pour demander la clé du studio.
+ */
+export function resolveErrorCode(status: number, body: unknown): ApiErrorCode {
+  if (
+    status === 401 &&
+    typeof body === "object" &&
+    body !== null &&
+    "error" in body &&
+    body.error === "studio_key_required"
+  ) {
+    return "studio_key_required";
+  }
+  return codeFromStatus(status);
 }
 
 function codeFromStatus(status: number): ApiErrorCode {
@@ -60,7 +81,9 @@ export function createHttpBackend(cfg: HttpConfig): ViewerBackend {
     }
     if (!res.ok) {
       // Le corps d'erreur serveur n'est pas affiché tel quel : le front mappe un code i18n.
-      throw new ApiError(res.status, codeFromStatus(res.status));
+      const errorBody: unknown =
+        res.status === 401 ? await res.json().catch(() => undefined) : undefined;
+      throw new ApiError(res.status, resolveErrorCode(res.status, errorBody));
     }
     return res;
   }
@@ -91,8 +114,8 @@ export function createHttpBackend(cfg: HttpConfig): ViewerBackend {
       return parse(res, MeResponseSchema);
     },
 
-    async openStudio(): Promise<void> {
-      await call("POST", "/api/studio/open");
+    async openStudio(key?: string): Promise<void> {
+      await call("POST", "/api/studio/open", key === undefined ? {} : { key });
     },
 
     async getIngest(): Promise<IngestResponse> {
@@ -143,6 +166,20 @@ export function createHttpBackend(cfg: HttpConfig): ViewerBackend {
     async banViewer(input: BanRequest): Promise<void> {
       const body = BanRequestSchema.parse(input);
       await call("POST", "/api/moderation/ban", body);
+    },
+
+    async reportMessage(input: ReportRequest): Promise<void> {
+      const body = ReportRequestSchema.parse(input);
+      await call("POST", "/api/report", body);
+    },
+
+    async listReports(): Promise<Report[]> {
+      const res = await call("GET", "/api/moderation/reports");
+      return (await parse(res, ReportListResponseSchema)).reports;
+    },
+
+    async dismissReport(id: string): Promise<void> {
+      await call("POST", `/api/moderation/reports/${encodeURIComponent(id)}/dismiss`);
     },
   };
 }

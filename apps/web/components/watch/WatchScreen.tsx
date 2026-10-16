@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { MAX_SPEAKERS } from "@solocast/shared";
 import { getViewerBackend } from "../../lib/backend";
 import { useChat } from "../../lib/chat/useChat";
@@ -23,7 +24,8 @@ export function WatchScreen() {
   const backend = getViewerBackend();
   const media = getStageMedia();
   const pseudo = session.me?.pseudo ?? null;
-  const viewer = pseudo ? { pseudo } : null;
+  const viewerId = session.me?.viewerId;
+  const viewer = pseudo ? { pseudo, ...(viewerId === undefined ? {} : { viewerId }) } : null;
 
   const feed = useChat(backend, session.hasPseudo);
   const stage = useStage(feed.client, backend, media);
@@ -63,7 +65,11 @@ export function WatchScreen() {
             </div>
 
             <div className="watch-right">
-              <ChatWindow feed={feed} viewer={viewer} />
+              <ChatWindow
+                feed={feed}
+                viewer={viewer}
+                onReport={(messageId, reason) => backend.reportMessage({ messageId, reason })}
+              />
               <StageBox stage={stage} chatStatus={feed.status} hasPseudo={session.hasPseudo} />
               <div className="room-box" aria-label={STRINGS.room.title}>
                 <div className="room-title">{STRINGS.room.title}</div>
@@ -83,6 +89,9 @@ export function WatchScreen() {
 
           <div className="statusbar">
             <div className="grow">{statusText}</div>
+            <div>
+              <Link href="/privacy">{STRINGS.privacy.link}</Link>
+            </div>
             <div>{STRINGS.status.viewers(viewers)}</div>
             <div>{STRINGS.status.speakers(speakers, MAX_SPEAKERS)}</div>
           </div>

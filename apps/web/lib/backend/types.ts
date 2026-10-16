@@ -3,6 +3,8 @@ import type {
   BanRequest,
   IngestResponse,
   MeResponse,
+  Report,
+  ReportRequest,
   SetPseudoRequest,
   TokenResponse,
 } from "@solocast/shared";
@@ -19,6 +21,8 @@ export type ApiErrorCode =
   | "room_full"
   // 502 : le serveur vidéo (SFU) ne répond pas ou n'est pas démarré.
   | "sfu_unavailable"
+  // 401 : le serveur exige la clé du studio (absente ou fausse).
+  | "studio_key_required"
   | "network"
   | "server";
 
@@ -43,8 +47,11 @@ export interface ViewerBackend {
   getMe(): Promise<MeResponse | null>;
   /** PUT /api/me/pseudo: username + colour chosen in the browser, with no authority. */
   setPseudo(input: SetPseudoRequest): Promise<MeResponse>;
-  /** POST /api/studio/open: takes the single studio slot and sets the studio cookie. */
-  openStudio(): Promise<void>;
+  /**
+   * POST /api/studio/open: takes the single studio slot and sets the studio cookie. `key` is only
+   * sent when the server asked for it (ApiError "studio_key_required"); it is never stored.
+   */
+  openStudio(key?: string): Promise<void>;
   /** POST /api/studio/ingest (streamer): RTMP address + stream key of the LiveKit Ingress. */
   getIngest(): Promise<IngestResponse>;
   /**
@@ -66,4 +73,10 @@ export interface ViewerBackend {
   revokeStage(viewerId: string): Promise<void>;
   /** POST /api/moderation/ban (streamer). Target = viewerId, never the username. */
   banViewer(input: BanRequest): Promise<void>;
+  /** POST /api/report (viewer): reports a chat message to the streamer. 204, deduplicated. */
+  reportMessage(input: ReportRequest): Promise<void>;
+  /** GET /api/moderation/reports (streamer): pending reports, oldest first. */
+  listReports(): Promise<Report[]>;
+  /** POST /api/moderation/reports/:id/dismiss (streamer). */
+  dismissReport(id: string): Promise<void>;
 }

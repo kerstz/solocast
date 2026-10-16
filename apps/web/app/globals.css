@@ -1493,3 +1493,24 @@ a:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Signalement d'un message : bouton discret, visible au survol ou au focus de la ligne. */
+.chat-report-btn {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 4px;
+  margin-right: 3px;
+  color: #555;
+  background: transparent;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.chat-line:hover .chat-report-btn,
+.chat-line:focus-within .chat-report-btn {
+  opacity: 1;
+}
+.chat-report {
+  font-size: 11px;
+}

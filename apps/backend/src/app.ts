@@ -25,6 +25,8 @@ import { createLiveKitGateway, type LiveKitGateway } from "./livekit/gateway.js"
 import { createViewerCapacity } from "./room/viewer-capacity.js";
 import { registerMeRoutes } from "./routes/me.js";
 import { registerModerationRoutes } from "./routes/moderation.js";
+import { createReportQueue } from "./report/queue.js";
+import { registerReportRoutes } from "./routes/report.js";
 import { registerStageRoutes } from "./routes/stage.js";
 import { registerStudioRoutes } from "./routes/studio.js";
 import { registerTokenRoutes } from "./routes/token.js";
@@ -310,6 +312,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   registerTokenRoutes(app, routeDeps);
   registerStageRoutes(app, routeDeps);
   registerModerationRoutes(app, routeDeps);
+  registerReportRoutes(app, routeDeps, chat, createReportQueue());
   if (options.appControl !== undefined) {
     registerAppRoutes(app, routeDeps, options.appControl);
   }

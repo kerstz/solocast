@@ -152,6 +152,9 @@ export function JoinWindow() {
                 </Link>
               </div>
             </div>
+            <p style={{ fontSize: 12, textAlign: "center", margin: "12px 0 0" }}>
+              <Link href="/privacy">{STRINGS.join.privacyLink}</Link>
+            </p>
           </div>
         </div>
       </main>
