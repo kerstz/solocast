@@ -93,7 +93,7 @@ pnpm dev
 ```
 
 - Frontend: http://localhost:3001 (username selection, then `/watch`)
-- Streamer Studio: http://localhost:3001/studio (no key required: whoever opens the page gets the studio)
+- Streamer Studio: http://localhost:3001/studio (in development, run with `STUDIO_ACCESS=local`, see §Server mode; otherwise the studio asks for `STUDIO_KEY`)
 - Backend: http://localhost:3000 (`GET /health`)
 
 Works without Docker: viewer identity, WebSocket chat, presence, request to speak, moderation.
@@ -123,8 +123,32 @@ The `LIVEKIT_*` keys in `.env` are used by the SFU, the backend (signed tokens) 
 The "live" flag of `presence:update` is `true` only when the SFU reports the streamer through the
 `participant_joined` webhook. Under Docker the container reaches the host through
 `host.docker.internal`: start the backend with `BACKEND_HOST=0.0.0.0` (and allow port 3000 on
-`docker0` if a firewall runs). This is not needed in the installed app, where the SFU runs on the
-same machine.
+`docker0` if a firewall runs). This binds a non-loopback address, so it **requires
+`STUDIO_ACCESS=key`** and a `STUDIO_KEY` (see below). This is not needed in the installed app,
+where the SFU runs on the same machine.
+
+### Server mode: studio access and abuse limits
+
+The studio is protected by a key unless you explicitly opt out on a local machine:
+
+| Variable                    | Default | Meaning                                                                                                               |
+| --------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| `STUDIO_ACCESS`             | `key`   | `key`: the studio requires `STUDIO_KEY`. `local`: no key, local use only (restrictions below).                        |
+| `STUDIO_KEY`                | -       | Required when `STUDIO_ACCESS=key`; at least 32 bytes, e.g. `openssl rand -hex 32`. Enter it in the studio to open it. |
+| `WS_MAX_CONNECTIONS_PER_IP` | `3`     | Maximum simultaneous chat WebSocket connections per IP.                                                               |
+| `WS_HEARTBEAT_INTERVAL_MS`  | `30000` | WebSocket ping interval; a socket that misses a pong is closed and its slot freed.                                    |
+| `BAN_IP_TTL_SECONDS`        | `86400` | Lifetime of the IP part of a ban.                                                                                     |
+| `CHAT_HISTORY_TTL_SECONDS`  | `86400` | Lifetime of the chat history kept in Redis.                                                                           |
+
+- `STUDIO_ACCESS=local` is accepted only if `BACKEND_HOST` is a loopback address (`127.0.0.1`,
+  `::1`, `localhost`) and `TRUST_PROXY=false`. Otherwise the backend refuses to start. In local
+  mode the studio opens only for connections that come from this machine (loopback address and
+  local `Host`).
+- The installed application (.exe / .deb) is not affected: its studio is reserved to the local
+  machine.
+- A WebSocket ping/pong heartbeat (about every 30 s) frees the slots of dead connections.
+- A ban also covers the IP address, stored only as an HMAC fingerprint (never in clear) for at most
+  `BAN_IP_TTL_SECONDS`.
 
 ## Publishing a release
 
@@ -141,6 +165,11 @@ artifacts.
 Build locally: `pnpm package` (needs `dpkg-deb` and `makensis`, i.e. `apt install dpkg nsis` or
 `pacman -S dpkg nsis`).
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for how to report a vulnerability, supported versions and the
+threat model.
+
 ## Quality
 
 ```sh
@@ -155,3 +184,10 @@ pnpm package      # .deb + .exe in dist/release/
 Playwright E2E (frontend only, mock backend): `pnpm --filter @solocast/web test:e2e`
 (viewer walkthrough + studio), all passing. The test server is started by Playwright on port 3101
 with `NEXT_PUBLIC_BACKEND_MODE=mock`: neither the backend nor LiveKit is required.
+
+A CI workflow (`.github/workflows/ci.yml`) runs lint, typecheck, tests and a dependency audit on
+every push to `main` and on every pull request.
+
+## License
+
+Not chosen yet, see [docs/TODO-LICENSE.md](docs/TODO-LICENSE.md).
