@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useState, type SubmitEvent } from "react";
 import { getViewerBackend } from "../../lib/backend";
 import { openStudioWith } from "../../lib/studio/openStudio";
 import { pickErrorMessage } from "../../lib/backend/errors";
@@ -57,7 +57,7 @@ export function StudioScreen() {
     };
   }, [attempt]);
 
-  const submitKey = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+  const submitKey = async (event: SubmitEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (checking || studioKey === "") return;
     setChecking(true);

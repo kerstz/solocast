@@ -60,7 +60,7 @@ export interface StudioController {
 export function useStudio(
   backend: ViewerBackend,
   broadcaster: BrowserBroadcaster,
-  previewRef: RefObject<HTMLVideoElement>,
+  previewRef: RefObject<HTMLVideoElement | null>,
 ): StudioController {
   const chat = useChat(backend, true);
   const [scene, dispatchScene] = useReducer(sceneReducer, INITIAL_SCENE_STATE);

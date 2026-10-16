@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type SubmitEvent } from "react";
 import { CHAT_MESSAGE_MAX_LENGTH } from "@solocast/shared";
 import { STRINGS } from "../../lib/i18n/strings";
 import type { ChatNotice } from "../../lib/chat/useChat";
@@ -34,7 +34,7 @@ export function ChatComposer({ disabled, notice, onSend }: ChatComposerProps) {
 
   const blocked = disabled || coolingDown;
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
+  const onSubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const text = draft.trim();
     if (text.length === 0 || blocked) return;

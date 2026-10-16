@@ -10,7 +10,7 @@ import { StudioSection } from "./StudioSection";
 
 interface BroadcastPanelProps {
   studio: StudioController;
-  previewRef: RefObject<HTMLVideoElement>;
+  previewRef: RefObject<HTMLVideoElement | null>;
   /** false dans l'application installée : pas de service Ingress, donc pas d'onglet OBS. */
   obsAvailable: boolean;
   /** Serveur vidéo absent ou en échec : « Go live » ne peut pas réussir. */

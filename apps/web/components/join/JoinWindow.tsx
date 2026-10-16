@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type SubmitEvent } from "react";
 import { PseudoSchema } from "@solocast/shared";
 import { pickErrorMessage } from "../../lib/backend/errors";
 import { STRINGS } from "../../lib/i18n/strings";
@@ -27,7 +27,7 @@ export function JoinWindow() {
   const [submitting, setSubmitting] = useState(false);
   const fieldId = useId();
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+  const onSubmit = async (event: SubmitEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const parsed = PseudoSchema.safeParse(username.trim());
     if (!parsed.success) {

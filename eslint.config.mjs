@@ -12,6 +12,8 @@ export default tseslint.config(
       "**/.next-e2e/**",
       // Export statique du front (build:static) et téléchargements d'empaquetage.
       "apps/web/out/**",
+      // Généré et réécrit par Next à chaque build (référence triple-slash imposée).
+      "apps/web/next-env.d.ts",
       ".cache/**",
       "**/coverage/**",
       "**/node_modules/**",
