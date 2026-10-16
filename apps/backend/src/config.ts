@@ -129,6 +129,14 @@ const AppEnvSchema = z
       .min(1)
       .max(CHAT_HISTORY_MAX_SIZE)
       .default(CHAT_HISTORY_MAX_SIZE),
+    // Durée de conservation de l'historique du chat (Redis) : la liste expire après ce délai sans
+    // nouveau message. Bornée à 7 jours (minimisation RGPD).
+    CHAT_HISTORY_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(60)
+      .max(7 * DAY_SECONDS)
+      .default(DAY_SECONDS),
     // Connexions WebSocket simultanées par adresse IP (le streameur n'est pas compté).
     WS_MAX_CONNECTIONS_PER_IP: z.coerce.number().int().min(1).max(100).default(3),
     // Intervalle du heartbeat WebSocket : une socket qui ne répond pas au ping suivant est coupée

@@ -5,7 +5,12 @@ import {
   createRedisSlidingWindowLimiter,
   type SlidingWindowLimiter,
 } from "./rate-limit.js";
-import { createMemoryChatState, createRedisChatState, type ChatState } from "./state.js";
+import {
+  createMemoryChatState,
+  createRedisChatState,
+  type ChatState,
+  type ChatStateOptions,
+} from "./state.js";
 
 // Ensemble des ports chat. Partagé entre instances : même bus, même état, même limiteur.
 export interface ChatServices {
@@ -14,10 +19,10 @@ export interface ChatServices {
   limiter: SlidingWindowLimiter;
 }
 
-export function createMemoryChatServices(options: { historySize: number }): ChatServices {
+export function createMemoryChatServices(options: ChatStateOptions): ChatServices {
   return {
     bus: createMemoryChatBus(),
-    state: createMemoryChatState({ historySize: options.historySize }),
+    state: createMemoryChatState(options),
     limiter: createMemorySlidingWindowLimiter(),
   };
 }
@@ -28,6 +33,7 @@ export interface RedisChatServicesDeps {
   // Connexion dédiée aux abonnements Pub/Sub.
   subscriber: Redis;
   historySize: number;
+  historyTtlSeconds: number;
   log: BusLogger;
 }
 
@@ -38,7 +44,11 @@ export async function createRedisChatServices(deps: RedisChatServicesDeps): Prom
       subscriber: deps.subscriber,
       log: deps.log,
     }),
-    state: createRedisChatState({ redis: deps.redis, historySize: deps.historySize }),
+    state: createRedisChatState({
+      redis: deps.redis,
+      historySize: deps.historySize,
+      historyTtlSeconds: deps.historyTtlSeconds,
+    }),
     limiter: createRedisSlidingWindowLimiter(deps.redis),
   };
 }

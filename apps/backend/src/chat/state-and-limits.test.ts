@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMemorySlidingWindowLimiter } from "./rate-limit.js";
-import { createMemoryChatState } from "./state.js";
+import type { Redis } from "ioredis";
+import { createMemoryChatState, createRedisChatState, HISTORY_KEY } from "./state.js";
 import { sleep } from "../test/ws-harness.js";
 
 const message = (n: number) => ({
@@ -8,7 +9,7 @@ const message = (n: number) => ({
   userId: "6f1c2a3e-8b4d-4c5e-9f60-718293a4b5c6",
   pseudo: "alice",
   text: `msg ${String(n)}`,
-  ts: n,
+  ts: Date.now() - 1_000 + n,
   isStreamer: false,
 });
 
@@ -20,6 +21,49 @@ describe("historique capé (mémoire)", () => {
     await state.appendHistory(message(3));
     const history = await state.recentHistory();
     expect(history.map((m) => m.text)).toEqual(["msg 2", "msg 3"]);
+  });
+});
+
+describe("rétention bornée de l'historique", () => {
+  it("n'expose plus un message plus ancien que le TTL (mémoire)", async () => {
+    const state = createMemoryChatState({ historySize: 10, historyTtlSeconds: 60 });
+    await state.appendHistory({ ...message(1), ts: Date.now() - 61_000 });
+    await state.appendHistory(message(2));
+    const history = await state.recentHistory();
+    expect(history.map((m) => m.text)).toEqual(["msg 2"]);
+  });
+
+  it("pose un EXPIRE sur la liste Redis à chaque message et filtre les messages périmés", async () => {
+    const calls: string[] = [];
+    const stored: string[] = [];
+    const multi = {
+      lpush(_key: string, value: string) {
+        calls.push("lpush");
+        stored.unshift(value);
+        return multi;
+      },
+      ltrim() {
+        calls.push("ltrim");
+        return multi;
+      },
+      expire(key: string, ttl: number) {
+        calls.push(`expire ${key} ${String(ttl)}`);
+        return multi;
+      },
+      exec() {
+        return Promise.resolve([]);
+      },
+    };
+    const redis = {
+      multi: () => multi,
+      lrange: () => Promise.resolve([...stored]),
+    } as unknown as Redis;
+    const state = createRedisChatState({ redis, historySize: 10, historyTtlSeconds: 3_600 });
+    await state.appendHistory({ ...message(1), ts: Date.now() - 3_601_000 });
+    await state.appendHistory(message(2));
+    expect(calls).toContain(`expire ${HISTORY_KEY} 3600`);
+    const history = await state.recentHistory();
+    expect(history.map((m) => m.text)).toEqual(["msg 2"]);
   });
 });
 

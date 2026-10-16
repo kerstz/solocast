@@ -27,13 +27,26 @@ export const PRESENCE_HASH = "chat:presence:main:pseudo";
 // Présence SFU du streameur : ZSET, score = expiration ms. Une seule clé (SFU_STREAMER_LINK_ID).
 export const STREAMER_LINK_ZSET = "chat:streamer:main";
 
+// Rétention par défaut de l'historique (CHAT_HISTORY_TTL_SECONDS) : 24 h.
+export const DEFAULT_HISTORY_TTL_SECONDS = 24 * 60 * 60;
+
+export interface ChatStateOptions {
+  historySize: number;
+  // Au-delà, un message n'est plus renvoyé et la liste Redis expire (minimisation RGPD).
+  historyTtlSeconds?: number;
+}
+
+// Un message plus ancien que la rétention n'est plus servi, même si la liste vit encore.
+const freshSince = (ttlSeconds: number): number => Date.now() - ttlSeconds * 1000;
+
 interface MemoryEntry<T> {
   value: T;
   expiresAt: number;
 }
 
 // Implémentation mémoire (tests et déploiement sans Redis). Même contrat que la version Redis.
-export function createMemoryChatState(options: { historySize: number }): ChatState {
+export function createMemoryChatState(options: ChatStateOptions): ChatState {
+  const ttlSeconds = options.historyTtlSeconds ?? DEFAULT_HISTORY_TTL_SECONDS;
   let history: ChatMessage[] = [];
   const presence = new Map<string, MemoryEntry<string | null>>();
   const streamerLinks = new Map<string, MemoryEntry<true>>();
@@ -58,6 +71,8 @@ export function createMemoryChatState(options: { historySize: number }): ChatSta
       return Promise.resolve();
     },
     recentHistory() {
+      const since = freshSince(ttlSeconds);
+      history = history.filter((message) => message.ts >= since);
       return Promise.resolve([...history]);
     },
     touchPresence(viewerId, pseudo, ttlSeconds) {
@@ -95,8 +110,12 @@ export function createMemoryChatState(options: { historySize: number }): ChatSta
 // Implémentation Redis : liste capée (LPUSH + LTRIM) pour l'historique ; ZSET (score = expiration)
 // + HASH pour la présence et les liens streameur. Aucun SCAN : la lecture est O(log N + M),
 // là où un SCAN parcourait tout l'espace de clés à chaque diffusion de présence.
-export function createRedisChatState(options: { redis: Redis; historySize: number }): ChatState {
+// La liste porte un TTL renouvelé à chaque message (EXPIRE) : sans activité, l'historique disparaît
+// de Redis (et de l'AOF) après CHAT_HISTORY_TTL_SECONDS ; à la lecture, les messages trop anciens
+// d'une liste encore vivante sont écartés.
+export function createRedisChatState(options: ChatStateOptions & { redis: Redis }): ChatState {
   const { redis, historySize } = options;
+  const ttlSeconds = options.historyTtlSeconds ?? DEFAULT_HISTORY_TTL_SECONDS;
 
   return {
     async appendHistory(message) {
@@ -104,14 +123,16 @@ export function createRedisChatState(options: { redis: Redis; historySize: numbe
         .multi()
         .lpush(HISTORY_KEY, JSON.stringify(message))
         .ltrim(HISTORY_KEY, 0, historySize - 1)
+        .expire(HISTORY_KEY, ttlSeconds)
         .exec();
     },
     async recentHistory() {
       const raw = await redis.lrange(HISTORY_KEY, 0, -1);
       const messages: ChatMessage[] = [];
+      const since = freshSince(ttlSeconds);
       for (const item of raw.reverse()) {
         const parsed = parseMessage(item);
-        if (parsed !== null) {
+        if (parsed !== null && parsed.ts >= since) {
           messages.push(parsed);
         }
       }

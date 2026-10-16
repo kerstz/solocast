@@ -141,7 +141,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     viewerCookieName: config.VIEWER_COOKIE_NAME,
   });
 
-  const chat = options.chat ?? createMemoryChatServices({ historySize: config.CHAT_HISTORY_SIZE });
+  const chat =
+    options.chat ??
+    createMemoryChatServices({
+      historySize: config.CHAT_HISTORY_SIZE,
+      historyTtlSeconds: config.CHAT_HISTORY_TTL_SECONDS,
+    });
   // Retrait de parole partagé par la route /api/stage/revoke et par stage:leave (WS).
   // La notification passe par le hub : référence différée (évaluée à l'appel), sans cycle.
   const revokeSpeaker = createSpeakerRevoker({

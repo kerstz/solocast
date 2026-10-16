@@ -536,7 +536,10 @@ async function main(): Promise<void> {
   const app = await buildApp({
     config,
     store: new MemoryKeyValueStore(),
-    chat: createMemoryChatServices({ historySize: config.CHAT_HISTORY_SIZE }),
+    chat: createMemoryChatServices({
+      historySize: config.CHAT_HISTORY_SIZE,
+      historyTtlSeconds: config.CHAT_HISTORY_TTL_SECONDS,
+    }),
     staticDir: webDir,
     studioLocalOnly: true,
     appControl: control,

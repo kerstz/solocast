@@ -28,7 +28,10 @@ async function createRuntime(
   if (config.STATE_BACKEND === "memory") {
     return {
       store: new MemoryKeyValueStore(),
-      chat: createMemoryChatServices({ historySize: config.CHAT_HISTORY_SIZE }),
+      chat: createMemoryChatServices({
+        historySize: config.CHAT_HISTORY_SIZE,
+        historyTtlSeconds: config.CHAT_HISTORY_TTL_SECONDS,
+      }),
       dispose: () => undefined,
     };
   }
@@ -59,6 +62,7 @@ async function createRuntime(
     redis,
     subscriber,
     historySize: config.CHAT_HISTORY_SIZE,
+    historyTtlSeconds: config.CHAT_HISTORY_TTL_SECONDS,
     log: logBus,
   });
   return {
