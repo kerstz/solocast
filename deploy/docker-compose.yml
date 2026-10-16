@@ -129,8 +129,10 @@ services:
           password: ${REDIS_PASSWORD}
           db: 1
     ports:
-      - "1935:1935"
-      - "8085:8080"
+      # Ingest OBS (RTMP, WHIP) : local par défaut. Pour recevoir un encodeur distant (serveur),
+      # INGEST_BIND_ADDR=0.0.0.0 (derrière un pare-feu / TLS).
+      - "${INGEST_BIND_ADDR:-127.0.0.1}:1935:1935"
+      - "${INGEST_BIND_ADDR:-127.0.0.1}:8085:8080"
       - "7885:7885/udp"
     depends_on:
       livekit:
