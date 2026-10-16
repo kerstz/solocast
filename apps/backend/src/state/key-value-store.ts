@@ -5,6 +5,8 @@ export interface KeyValueStore {
   // ttlSeconds = null : clé sans expiration (ex. bannissement permanent).
   set(key: string, value: string, ttlSeconds: number | null): Promise<void>;
   exists(key: string): Promise<boolean>;
+  // Valeur d'une clé vivante, `null` si absente ou expirée.
+  get(key: string): Promise<string | null>;
   delete(key: string): Promise<void>;
   // Clés vivantes commençant par `prefix` (SCAN côté Redis). Usage réservé à des préfixes bornés.
   listKeys(prefix: string): Promise<string[]>;
@@ -65,6 +67,9 @@ export function createRedisKeyValueStore(redis: Redis): KeyValueStore {
     },
     async exists(key) {
       return (await redis.exists(key)) === 1;
+    },
+    async get(key) {
+      return redis.get(key);
     },
     async delete(key) {
       await redis.del(key);
@@ -134,6 +139,10 @@ export class MemoryKeyValueStore implements KeyValueStore {
 
   exists(key: string): Promise<boolean> {
     return Promise.resolve(this.live(key) !== undefined);
+  }
+
+  get(key: string): Promise<string | null> {
+    return Promise.resolve(this.live(key) ?? null);
   }
 
   delete(key: string): Promise<void> {

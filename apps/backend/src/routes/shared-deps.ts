@@ -2,7 +2,9 @@ import type { AuthMiddleware } from "../auth/middleware.js";
 import type { StreamerAuth } from "../auth/streamer-auth.js";
 import type { ViewerIdentityService } from "../auth/viewer-identity.js";
 import type { ChatHub } from "../chat/hub.js";
+import type { ClientIpResolver } from "../http/client-ip.js";
 import type { LiveKitGateway } from "../livekit/gateway.js";
+import type { IpBans } from "../moderation/ip-ban.js";
 import type { ViewerCapacity } from "../room/viewer-capacity.js";
 import type { KeyValueStore } from "../state/key-value-store.js";
 import type { StageNotifier } from "../stage/stage-notifier.js";
@@ -28,4 +30,7 @@ export interface RouteDeps {
   stageNotifier: StageNotifier;
   store: KeyValueStore;
   hub: ChatHub;
+  // IP du client (même règle que le rate-limit) et ban par empreinte d'IP.
+  clientIp: ClientIpResolver;
+  ipBans: IpBans;
 }

@@ -7,7 +7,7 @@ import type { RouteDeps } from "./shared-deps.js";
 // Ban : écrit la clé AVANT toute coupure (un ban effectif même si le SFU échoue), ferme les WS,
 // retire le droit de parole, puis coupe la publication et retire le participant du SFU.
 export function registerModerationRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  const { authMiddleware, store, hub, stage, livekit } = deps;
+  const { authMiddleware, store, hub, stage, livekit, ipBans } = deps;
 
   async function cutAndKick(log: FastifyBaseLogger, viewerId: string): Promise<string | undefined> {
     let sfuErrorName: string | undefined;
@@ -33,6 +33,9 @@ export function registerModerationRoutes(app: FastifyInstance, deps: RouteDeps):
     async (request, reply) => {
       const body = BanRequestSchema.parse(request.body);
       await store.set(banKey(body.viewerId), "1", body.ttlSeconds ?? null);
+      // L'IP (empreinte HMAC) est bannie aussi, pour une durée bornée : un nouveau cookie ou une
+      // fenêtre privée ne suffit plus à revenir.
+      const ipBanned = await ipBans.banViewerIp(body.viewerId, body.ttlSeconds);
       await stage.revoke(body.viewerId);
       await hub.closeViewer(body.viewerId, WS_CLOSE_CODES.BANNED, "Access denied.");
       const sfuErrorName = await cutAndKick(request.log, body.viewerId);
@@ -41,6 +44,7 @@ export function registerModerationRoutes(app: FastifyInstance, deps: RouteDeps):
           event: "moderation.ban",
           permanent: body.ttlSeconds === undefined,
           hasReason: body.reason !== undefined,
+          ipBanned,
         },
         "Viewer banni",
       );

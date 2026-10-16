@@ -128,8 +128,16 @@ export class ChatClient {
     });
   }
 
-  static async connect(port: number, headers: Record<string, string>): Promise<ChatClient> {
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ws`, { headers });
+  // autoPong=false : client qui ne répond plus aux pings (connexion à moitié ouverte simulée).
+  static async connect(
+    port: number,
+    headers: Record<string, string>,
+    options: { autoPong?: boolean } = {},
+  ): Promise<ChatClient> {
+    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ws`, {
+      headers,
+      autoPong: options.autoPong ?? true,
+    });
     const client = new ChatClient(socket);
     await once(socket, "open");
     return client;

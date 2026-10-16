@@ -26,6 +26,9 @@ export function registerTokenRoutes(app: FastifyInstance, deps: RouteDeps): void
     if (viewerId === undefined) {
       throw new Error("requireViewer succeeded without a viewer identity");
     }
+    if (await deps.ipBans.isBanned(deps.clientIp(request))) {
+      throw new HttpError(403, "viewer_banned", "Access denied.");
+    }
     // Même plafond que le chat : sans place, pas de session SFU (le flux coûte de l'egress).
     if (!(await capacity.take(viewerId))) {
       throw new HttpError(503, "room_full", "Room is full.");

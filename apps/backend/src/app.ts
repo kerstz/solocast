@@ -15,8 +15,10 @@ import { createViewerIdentity, VIEWER_SESSION_TTL_SECONDS } from "./auth/viewer-
 import { createChatHub } from "./chat/hub.js";
 import { createMemoryChatServices, type ChatServices } from "./chat/services.js";
 import type { AppConfig } from "./config.js";
+import { createClientIpResolver } from "./http/client-ip.js";
 import { HttpError, registerErrorHandlers } from "./http/errors.js";
-import { isLocalHost, isLocalRequest, isLoopbackAddress } from "./http/local-host.js";
+import { isLocalRequest, isLoopbackAddress } from "./http/local-host.js";
+import { createIpBans } from "./moderation/ip-ban.js";
 import type { AppControl } from "./app-control.js";
 import { registerAppRoutes } from "./routes/app.js";
 import { createLiveKitGateway, type LiveKitGateway } from "./livekit/gateway.js";
@@ -87,6 +89,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const loggerBase = {
     level: config.LOG_LEVEL,
     redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },
+    // Minimisation (RGPD) : ni adresse IP ni port client dans les logs de requête.
+    serializers: {
+      req: (request: { method: string; url: string }) => ({
+        method: request.method,
+        url: request.url,
+      }),
+    },
   };
   const app = Fastify({
     logger:
@@ -111,6 +120,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   // Plafond de viewers simultanés. Partagé par la passerelle WS et /api/token : une place par
   // viewerId, donc plusieurs onglets d'une même personne ne consomment qu'une place.
   const capacity = createViewerCapacity({ store, max: config.MAX_VIEWERS });
+  // Même IP client pour le rate-limit, le plafond WebSocket par IP et le ban par IP.
+  const clientIp = createClientIpResolver(options.trustCloudflareIp === true);
+  const ipBans = createIpBans({
+    store,
+    secret: config.JWT_SECRET,
+    maxTtlSeconds: config.BAN_IP_TTL_SECONDS,
+    rememberTtlSeconds: VIEWER_SESSION_TTL_SECONDS,
+  });
   const stage = createStageRegistry({
     store,
     roomName: config.ROOM_NAME,
@@ -188,19 +205,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
   await app.register(rateLimit, {
     global: false,
-    ...(options.trustCloudflareIp === true
-      ? {
-          // `cf-connecting-ip` n'est digne de foi que sur le trajet du tunnel, où l'en-tête Host
-          // est l'adresse publique : un client local qui le forge garde Host=localhost.
-          keyGenerator: (request) => {
-            const forwarded = request.headers["cf-connecting-ip"];
-            const viaTunnel = !isLocalHost(request.headers.host);
-            return viaTunnel && typeof forwarded === "string" && forwarded !== ""
-              ? forwarded
-              : request.ip;
-          },
-        }
-      : {}),
+    // Derrière le tunnel : `cf-connecting-ip` (cf. http/client-ip.ts), sinon request.ip.
+    keyGenerator: clientIp,
     ...(options.redis === undefined ? {} : { redis: options.redis }),
   });
 
@@ -282,6 +288,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     stageNotifier: options.stageNotifier ?? hub,
     store,
     hub,
+    clientIp,
+    ipBans,
   };
   // Liveness probe (launcher, reverse proxy). No session, no store access.
   app.get("/health", async (_request, reply) =>
@@ -310,6 +318,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     cookies: { streamerName: config.SESSION_COOKIE_NAME, viewerName: config.VIEWER_COOKIE_NAME },
     allowedOrigins: origins,
     maxPayloadBytes: CHAT_WS_MAX_PAYLOAD_BYTES,
+    clientIp,
+    ipBans,
+    maxConnectionsPerIp: config.WS_MAX_CONNECTIONS_PER_IP,
+    heartbeatIntervalMs: config.WS_HEARTBEAT_INTERVAL_MS,
   });
   registerLiveKitWebhookRoutes(app, {
     verifier:

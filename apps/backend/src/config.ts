@@ -49,6 +49,7 @@ const CorsOriginSchema = z
 const CookieNameSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 
 const STUDIO_KEY_MIN_BYTES = 32;
+const DAY_SECONDS = 24 * 60 * 60;
 
 // Adresse d'écoute réservée à cette machine. Tout le reste (0.0.0.0, IP LAN, nom DNS) expose le
 // backend au réseau : le studio doit alors être protégé par une clé.
@@ -128,6 +129,19 @@ const AppEnvSchema = z
       .min(1)
       .max(CHAT_HISTORY_MAX_SIZE)
       .default(CHAT_HISTORY_MAX_SIZE),
+    // Connexions WebSocket simultanées par adresse IP (le streameur n'est pas compté).
+    WS_MAX_CONNECTIONS_PER_IP: z.coerce.number().int().min(1).max(100).default(3),
+    // Intervalle du heartbeat WebSocket : une socket qui ne répond pas au ping suivant est coupée
+    // et sa place libérée.
+    WS_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
+    // Durée du bannissement de l'empreinte IP (HMAC, jamais l'IP en clair) qui double le ban par
+    // identité : effacer son cookie ne suffit plus. Bornée : une IP est partagée (CGNAT, Wi-Fi).
+    BAN_IP_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(60)
+      .max(7 * DAY_SECONDS)
+      .default(DAY_SECONDS),
     CHAT_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(3),
     CHAT_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(100).default(2_000),
   })
