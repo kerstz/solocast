@@ -81,7 +81,7 @@ function showError(message: string): void {
       ],
       { SOLOCAST_MESSAGE: message },
     );
-  } else if (!run("zenity", ["--error", "--title=SoloCast", `--text=${message}`])) {
+  } else if (!run("zenity", ["--error", "--no-markup", "--title=SoloCast", `--text=${message}`])) {
     run("notify-send", ["SoloCast", message]);
   }
 }
