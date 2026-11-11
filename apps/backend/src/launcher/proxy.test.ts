@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import { connect, type Socket } from "node:net";
 import type { AddressInfo } from "node:net";
@@ -154,7 +155,7 @@ describe("proxy mono-origine", () => {
       await new Promise<void>((resolve) => client.once("connect", resolve));
       client.write(
         "GET /ws HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n" +
-          "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+          `Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${randomBytes(16).toString("base64")}\r\n\r\n`,
       );
       await sawRequest;
       client.resetAndDestroy();

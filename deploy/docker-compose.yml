@@ -43,6 +43,12 @@ services:
     cpus: 0.15
     security_opt:
       - no-new-privileges:true
+    # Redis n'écrit que dans /data (volume) : système de fichiers en lecture seule, aucune
+    # capability. Reste root dans le conteneur (le volume existant appartient à root : passer
+    # en `user: "999:1000"` demande de chown le volume, à faire à la main au prochain déploiement).
+    read_only: true
+    cap_drop:
+      - ALL
 
   livekit:
     image: livekit/livekit-server:v1.13.7
@@ -109,6 +115,9 @@ services:
     cpus: 0.8
     security_opt:
       - no-new-privileges:true
+    # Ports tous > 1024 : aucune capability nécessaire.
+    cap_drop:
+      - ALL
 
   ingress:
     image: livekit/ingress:v1.5.0

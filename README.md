@@ -139,6 +139,7 @@ The studio is protected by a key unless you explicitly opt out on a local machin
 | `WS_HEARTBEAT_INTERVAL_MS`  | `30000` | WebSocket ping interval; a socket that misses a pong is closed and its slot freed.                                    |
 | `BAN_IP_TTL_SECONDS`        | `86400` | Lifetime of the IP part of a ban.                                                                                     |
 | `CHAT_HISTORY_TTL_SECONDS`  | `86400` | Lifetime of the chat history kept in Redis.                                                                           |
+| `TRUST_PROXY_HOPS`          | `1`     | Trusted reverse proxies when `TRUST_PROXY=true`; the client IP is read that many hops from the right of `X-Forwarded-For`. |
 
 - `STUDIO_ACCESS=local` is accepted only if `BACKEND_HOST` is a loopback address (`127.0.0.1`,
   `::1`, `localhost`) and `TRUST_PROXY=false`. Otherwise the backend refuses to start. In local
@@ -146,6 +147,10 @@ The studio is protected by a key unless you explicitly opt out on a local machin
   local `Host`).
 - The installed application (.exe / .deb) is not affected: its studio is reserved to the local
   machine.
+- The studio cookie is `httpOnly` and `SameSite=Strict`; the viewer cookie is `SameSite=Lax`.
+- A banned viewer who rejoins the SFU with a still-valid LiveKit token is removed on the
+  `participant_joined` webhook; the same webhook cuts publishing for a viewer without a stage grant.
+- Usernames such as `Streameur` or `admin` are reserved.
 - A WebSocket ping/pong heartbeat (about every 30 s) frees the slots of dead connections.
 - A ban also covers the IP address, stored only as an HMAC fingerprint (never in clear) for at most
   `BAN_IP_TTL_SECONDS`.
@@ -185,7 +190,7 @@ Playwright E2E (frontend only, mock backend): `pnpm --filter @solocast/web test:
 (viewer walkthrough + studio), all passing. The test server is started by Playwright on port 3101
 with `NEXT_PUBLIC_BACKEND_MODE=mock`: neither the backend nor LiveKit is required.
 
-A CI workflow (`.github/workflows/ci.yml`) runs lint, typecheck, tests and a dependency audit on
+A CI workflow (`.github/workflows/ci.yml`) runs lint, typecheck, tests, the web build and a dependency audit (production and development, level high) on
 every push to `main` and on every pull request.
 
 ## License

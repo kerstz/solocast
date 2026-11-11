@@ -1,0 +1,4 @@
+# Faux positif : jeton factice d'un test (placeholder, aucune valeur réelle).
+1e84f794812cb873048536867efa3d2a571cb504:packages/shared/src/schemas.test.ts:generic-api-key:13
+# Clé WebSocket d'exemple d'un test (RFC 6455), déjà dans l'historique local.
+8ba8a30f527fa64075e360e6a94191160d87fcbb:apps/backend/src/launcher/proxy.test.ts:generic-api-key:157

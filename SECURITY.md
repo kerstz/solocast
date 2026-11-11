@@ -36,3 +36,12 @@ is identified by a chosen username.
 
 **Out of scope.** Anyone with local access to the machine running the installed app, and a
 compromised host or browser.
+
+## Hardening notes
+
+- Behind a reverse proxy, set `TRUST_PROXY=true` and `TRUST_PROXY_HOPS` to the number of proxies
+  (1 for Caddy). Never expose the backend port directly in that mode.
+- The studio cookie is `httpOnly`, `SameSite=Strict` and `Secure` in production.
+- LiveKit tokens cannot be revoked and live `LIVEKIT_TOKEN_TTL_SECONDS` (600 s by default); the
+  `participant_joined` webhook re-applies bans and stage grants when a viewer rejoins.
+- Dependencies are checked with `pnpm audit` in CI (production and development, level high).
