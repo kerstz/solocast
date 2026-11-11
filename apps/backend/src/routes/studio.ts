@@ -32,7 +32,7 @@ export function registerStudioRoutes(app: FastifyInstance, deps: RouteDeps): voi
       reply.setCookie(
         cookies.streamerName,
         token,
-        sessionCookieOptions(cookies.secure, STREAMER_SESSION_TTL_SECONDS),
+        sessionCookieOptions(cookies.secure, STREAMER_SESSION_TTL_SECONDS, "strict"),
       );
       request.log.info({ event: "studio.open" }, "Studio session opened");
       return reply.code(204).send();
@@ -42,7 +42,10 @@ export function registerStudioRoutes(app: FastifyInstance, deps: RouteDeps): voi
   app.post("/api/studio/close", async (request, reply) => {
     EmptyBodySchema.parse(request.body ?? {});
     await streamerAuth.close(request.cookies[cookies.streamerName]);
-    reply.clearCookie(cookies.streamerName, sessionCookieOptions(cookies.secure));
+    reply.clearCookie(
+      cookies.streamerName,
+      sessionCookieOptions(cookies.secure, undefined, "strict"),
+    );
     request.log.info({ event: "studio.close" }, "Studio session closed");
     return reply.code(204).send();
   });
@@ -51,7 +54,10 @@ export function registerStudioRoutes(app: FastifyInstance, deps: RouteDeps): voi
   // jamais mis en cache : la clé de flux vaut droit de publier sur la room.
   app.post(
     "/api/studio/ingest",
-    { preHandler: [deps.authMiddleware.requireStreamer], config: { rateLimit: deps.tokenRateLimit } },
+    {
+      preHandler: [deps.authMiddleware.requireStreamer],
+      config: { rateLimit: deps.tokenRateLimit },
+    },
     async (request, reply) => {
       EmptyBodySchema.parse(request.body ?? {});
       const ingest = await deps.livekit.ensureIngress();

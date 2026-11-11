@@ -31,12 +31,12 @@ describe("POST /api/studio/open et requireStreamer", () => {
     await app.close();
   });
 
-  it("pose le cookie studio à l'ouverture (httpOnly, SameSite=Lax, 12 h)", async () => {
+  it("pose le cookie studio à l'ouverture (httpOnly, SameSite=Strict, 12 h)", async () => {
     const res = await open();
     expect(res.statusCode).toBe(204);
     const header = String(res.headers["set-cookie"]);
     expect(header).toContain("HttpOnly");
-    expect(header).toContain("SameSite=Lax");
+    expect(header).toContain("SameSite=Strict");
     expect(header).toContain("Max-Age=43200");
     expect(header).not.toContain("Secure");
   });
@@ -234,5 +234,18 @@ describe("POST /api/studio/ingest", () => {
     await ingest(token);
     expect(harness.logs()).toContain("studio.ingest");
     expect(harness.logs()).not.toContain("fake-stream-key");
+  });
+});
+
+describe("cookie studio", () => {
+  it("est httpOnly et SameSite=Strict (le cookie viewer reste Lax)", async () => {
+    const h = await createHarness();
+    const open = await h.app.inject({ method: "POST", url: "/api/studio/open" });
+    const studio = String(open.headers["set-cookie"]);
+    expect(studio).toMatch(/HttpOnly/i);
+    expect(studio).toMatch(/SameSite=Strict/i);
+    const me = await h.app.inject({ method: "GET", url: "/api/me" });
+    expect(String(me.headers["set-cookie"])).toMatch(/SameSite=Lax/i);
+    await h.app.close();
   });
 });
