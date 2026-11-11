@@ -83,6 +83,10 @@ const AppEnvSchema = z
     COOKIE_SECURE: z.stringbool(),
     // true derrière un reverse-proxy (Caddy) : sans ça, le rate-limit compte l'IP du proxy pour tous.
     TRUST_PROXY: z.stringbool().default(false),
+    // Nombre de reverse-proxies de confiance devant le backend (1 = Caddy seul). L'IP client est
+    // lue en remontant ce nombre de sauts depuis la droite de X-Forwarded-For : les adresses
+    // ajoutées plus à gauche par le client sont ignorées (rate-limit et ban par IP non usurpables).
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(1).max(5).default(1),
     SESSION_COOKIE_NAME: CookieNameSchema,
     VIEWER_COOKIE_NAME: CookieNameSchema,
     // Accès au studio. `key` (défaut) : POST /api/studio/open exige STUDIO_KEY. `local` : le

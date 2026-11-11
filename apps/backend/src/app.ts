@@ -110,7 +110,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       options.logStream === undefined ? loggerBase : { ...loggerBase, stream: options.logStream },
     bodyLimit: 4_096,
     // Derrière Caddy (WP6) : sans ça, le rate-limit voit l'IP du proxy pour toutes les requêtes.
-    trustProxy: config.TRUST_PROXY,
+    // Nombre de sauts (et non `true`) : `true` ferait confiance à tout X-Forwarded-For, donc à
+    // l'adresse que le client y écrit lui-même.
+    // Fastify 5 ignore un simple nombre (échec fermé) : fonction qui compte les sauts.
+    trustProxy: config.TRUST_PROXY
+      ? (_address: string, hop: number) => hop < config.TRUST_PROXY_HOPS
+      : false,
   });
 
   const codec = createTokenCodec(config.JWT_SECRET);

@@ -98,4 +98,11 @@ describe("loadConfig", () => {
       /LIVEKIT_TOKEN_TTL_SECONDS/,
     );
   });
+
+  it("TRUST_PROXY_HOPS : 1 par défaut, borné de 1 à 5", () => {
+    expect(loadConfig(createTestEnv()).TRUST_PROXY_HOPS).toBe(1);
+    expect(loadConfig(createTestEnv({ TRUST_PROXY_HOPS: "2" })).TRUST_PROXY_HOPS).toBe(2);
+    expect(() => loadConfig(createTestEnv({ TRUST_PROXY_HOPS: "0" }))).toThrow(/TRUST_PROXY_HOPS/);
+    expect(() => loadConfig(createTestEnv({ TRUST_PROXY_HOPS: "9" }))).toThrow(/TRUST_PROXY_HOPS/);
+  });
 });
