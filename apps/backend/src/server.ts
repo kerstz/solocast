@@ -108,8 +108,8 @@ async function main(): Promise<void> {
       app.log.info({ event: "server.shutdown" }, message);
     },
   });
-  process.once("SIGTERM", () => void shutdown("SIGTERM"));
-  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 
   await app.listen({ host: config.BACKEND_HOST, port: config.BACKEND_PORT });
   app.log.info(

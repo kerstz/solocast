@@ -6,13 +6,23 @@ afterEach(() => {
 });
 
 describe("createShutdown", () => {
-  it("ferme une seule fois, même sur deux signaux, et sort avec 0", async () => {
+  it("ferme une seule fois et sort avec 0", async () => {
     const close = vi.fn(() => Promise.resolve());
     const exit = vi.fn();
     const shutdown = createShutdown({ close, exit, log: () => undefined });
-    await Promise.all([shutdown("SIGTERM"), shutdown("SIGINT")]);
+    await shutdown("SIGTERM");
     expect(close).toHaveBeenCalledTimes(1);
     expect(exit).toHaveBeenCalledExactlyOnceWith(0);
+  });
+
+  it("un second signal pendant la fermeture force la sortie immédiate (1)", async () => {
+    const exit = vi.fn();
+    const close = vi.fn(() => new Promise<void>(() => undefined));
+    const shutdown = createShutdown({ close, exit, log: () => undefined });
+    void shutdown("SIGTERM");
+    await shutdown("SIGINT");
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(1);
   });
 
   it("une fermeture en échec sort avec 1 sans promesse rejetée", async () => {
