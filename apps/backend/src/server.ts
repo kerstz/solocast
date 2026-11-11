@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { Redis } from "ioredis";
 import { buildApp } from "./app.js";
 import { createMemoryChatServices, createRedisChatServices } from "./chat/services.js";
+import { createShutdown } from "./shutdown.js";
 import { loadConfig, ConfigError, type AppConfig } from "./config.js";
 import {
   createRedisKeyValueStore,
@@ -97,12 +98,18 @@ async function main(): Promise<void> {
     runtime.redis.on("error", onRedisError);
   }
 
-  const shutdown = async (): Promise<void> => {
-    await app.close();
-    runtime.dispose();
-  };
-  process.once("SIGTERM", () => void shutdown());
-  process.once("SIGINT", () => void shutdown());
+  const shutdown = createShutdown({
+    close: async () => {
+      await app.close();
+      runtime.dispose();
+    },
+    exit: (code) => process.exit(code),
+    log: (message) => {
+      app.log.info({ event: "server.shutdown" }, message);
+    },
+  });
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
 
   await app.listen({ host: config.BACKEND_HOST, port: config.BACKEND_PORT });
   app.log.info(
