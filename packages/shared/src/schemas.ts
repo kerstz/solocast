@@ -25,6 +25,29 @@ export const PseudoSchema = z
   .max(PSEUDO_MAX_LENGTH)
   .regex(/^[A-Za-z0-9_-]+$/, "Username accepts only letters, digits, '_' and '-'");
 
+// Noms qu'un viewer ne peut pas choisir : ils se feraient passer pour le streameur ou le système
+// (le badge streameur existe, mais un nom identique tromperait un lecteur pressé). Comparaison
+// sans casse ni « _ » / « - » : « Strea_meur » est refusé aussi.
+export const RESERVED_PSEUDOS = [
+  "streamer",
+  "streameur",
+  "admin",
+  "administrator",
+  "administrateur",
+  "moderator",
+  "moderateur",
+  "mod",
+  "system",
+  "systeme",
+  "solocast",
+  "host",
+] as const;
+
+export function isReservedPseudo(pseudo: string): boolean {
+  const folded = pseudo.toLowerCase().replace(/[_-]/g, "");
+  return (RESERVED_PSEUDOS as readonly string[]).includes(folded);
+}
+
 export const UserIdSchema = z.string().min(1).max(64);
 
 // Palette de couleurs de pseudo, choisie par le viewer à l'entrée. Valeurs
@@ -40,7 +63,9 @@ export type ViewerId = z.infer<typeof ViewerIdSchema>;
 
 // PUT /api/me/pseudo : pseudo choisi par le viewer. Validé ici, sans autorité.
 export const SetPseudoRequestSchema = z.strictObject({
-  pseudo: PseudoSchema,
+  pseudo: PseudoSchema.refine((value) => !isReservedPseudo(value), {
+    message: "This username is reserved",
+  }),
   // Optionnel : couleur de pseudo choisie dans la palette VIEWER_COLORS (aucune autorité).
   color: ViewerColorSchema.optional(),
 });

@@ -130,7 +130,21 @@ export class MemoryKeyValueStore implements KeyValueStore {
   // Ensembles bornés à expiration (places de speakers) : member -> expiration (ms).
   private readonly slots = new Map<string, Map<string, number>>();
 
+  // Les clés expirées ne sont retirées qu'à la lecture : sans balayage, des clés écrites une
+  // fois et jamais relues (empreintes IP de visiteurs de passage) s'accumuleraient.
+  private writes = 0;
+  static readonly SWEEP_EVERY_WRITES = 1_000;
+
+  private sweep(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.entries) {
+      if (entry.expiresAt <= now) this.entries.delete(key);
+    }
+  }
+
   set(key: string, value: string, ttlSeconds: number | null): Promise<void> {
+    this.writes += 1;
+    if (this.writes % MemoryKeyValueStore.SWEEP_EVERY_WRITES === 0) this.sweep();
     const expiresAt =
       ttlSeconds === null ? Number.POSITIVE_INFINITY : Date.now() + ttlSeconds * 1000;
     this.entries.set(key, { value, expiresAt });
@@ -194,6 +208,11 @@ export class MemoryKeyValueStore implements KeyValueStore {
       }
     }
     return set;
+  }
+
+  /** Nombre d'entrées conservées, expirées comprises (tests). */
+  get size(): number {
+    return this.entries.size;
   }
 
   private live(key: string): string | undefined {

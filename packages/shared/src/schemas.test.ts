@@ -171,3 +171,17 @@ describe("report schemas", () => {
     expect(parsed.success).toBe(true);
   });
 });
+
+describe("SetPseudoRequestSchema : pseudos réservés", () => {
+  it.each(["Streameur", "streamer", "ADMIN", "Strea_meur", "mo-d", "Solocast"])(
+    "refuse %s",
+    (pseudo) => {
+      expect(SetPseudoRequestSchema.safeParse({ pseudo }).success).toBe(false);
+    },
+  );
+
+  it("accepte un pseudo ordinaire, même proche", () => {
+    expect(SetPseudoRequestSchema.safeParse({ pseudo: "streamfan" }).success).toBe(true);
+    expect(SetPseudoRequestSchema.safeParse({ pseudo: "admin42" }).success).toBe(true);
+  });
+});
