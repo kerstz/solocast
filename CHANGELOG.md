@@ -14,7 +14,6 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Ban par IP sur le préfixe /64 en IPv6 (rotation de suffixe sans effet).
 - `TRUST_PROXY_HOPS` : seul le nombre de proxys configuré est cru pour `X-Forwarded-For`
   (avant : toute la chaîne, donc usurpation du rate-limit et du ban par IP).
-- Cookie studio en `SameSite=Strict`.
 - Pseudos réservés (`Streameur`, `admin`, `system`…).
 - Dépendances : fast-uri 3.1.9 / 4.2.3, glob 14, minimatch 11, vite 8.3.8 (GHSA-333x-w4r6-6crp,
   GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h, GHSA-3g3m-2fjr-6pw4,

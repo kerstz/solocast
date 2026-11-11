@@ -41,7 +41,7 @@ compromised host or browser.
 
 - Behind a reverse proxy, set `TRUST_PROXY=true` and `TRUST_PROXY_HOPS` to the number of proxies
   (1 for Caddy). Never expose the backend port directly in that mode.
-- The studio cookie is `httpOnly`, `SameSite=Strict` and `Secure` in production.
+- Session cookies are `httpOnly`, `SameSite=Lax` and `Secure` in production; cross-site writes are refused by an `Origin` allowlist check.
 - LiveKit tokens cannot be revoked and live `LIVEKIT_TOKEN_TTL_SECONDS` (600 s by default); the
   `participant_joined` webhook re-applies bans and stage grants when a viewer rejoins.
 - Dependencies are checked with `pnpm audit` in CI (production and development, level high).

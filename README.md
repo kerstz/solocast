@@ -147,7 +147,7 @@ The studio is protected by a key unless you explicitly opt out on a local machin
   local `Host`).
 - The installed application (.exe / .deb) is not affected: its studio is reserved to the local
   machine.
-- The studio cookie is `httpOnly` and `SameSite=Strict`; the viewer cookie is `SameSite=Lax`.
+- Session cookies are `httpOnly` and `SameSite=Lax`; cross-site writes are refused by an `Origin` allowlist check.
 - A banned viewer who rejoins the SFU with a still-valid LiveKit token is removed on the
   `participant_joined` webhook; the same webhook cuts publishing for a viewer without a stage grant.
 - Usernames such as `Streameur` or `admin` are reserved.
