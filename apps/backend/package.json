@@ -23,10 +23,10 @@
     "@fastify/cors": "^11.3.1",
     "@fastify/helmet": "^13.2.0",
     "@fastify/rate-limit": "^11.2.1",
-    "@fastify/static": "^10.1.6",
+    "@fastify/static": "^10.1.10",
     "@fastify/websocket": "^11.3.4",
     "@solocast/shared": "workspace:*",
-    "fastify": "^5.12.7",
+    "fastify": "^5.12.8",
     "ioredis": "^5.11.1",
     "jose": "^6.2.12",
     "livekit-server-sdk": "^2.19.1",
@@ -38,6 +38,7 @@
     "@types/ws": "^8.18.2",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
+    "vite": "^8.3.3",
     "vitest": "^4.1.12"
   }
 }
