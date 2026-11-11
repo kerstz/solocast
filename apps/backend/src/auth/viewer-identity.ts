@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  isReservedPseudo,
   PseudoSchema,
   ViewerColorSchema,
   ViewerIdSchema,
@@ -57,7 +58,9 @@ export function createViewerIdentity(deps: ViewerIdentityDeps): ViewerIdentitySe
         verified.color === undefined ? null : ViewerColorSchema.safeParse(verified.color);
       return {
         viewerId: viewerId.data,
-        pseudo: pseudo === null || !pseudo.success ? null : pseudo.data,
+        // Un jeton émis avant l'interdiction d'un nom réservé ne le garde pas jusqu'à son expiration.
+        pseudo:
+          pseudo === null || !pseudo.success || isReservedPseudo(pseudo.data) ? null : pseudo.data,
         color: color === null || !color.success ? null : color.data,
       };
     },

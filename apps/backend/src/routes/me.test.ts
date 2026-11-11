@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { banKey } from "../auth/viewer-identity.js";
+import { createTokenCodec } from "../auth/tokens.js";
 import { cookieFrom, createHarness, jsonBody, type Harness } from "../test/harness.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -160,4 +162,27 @@ describe("GET /api/me avec cookie streameur", () => {
     });
     expect(jsonBody(res).role).toBe("streamer");
   });
+});
+
+describe("pseudos réservés déjà présents dans un jeton émis avant l'interdiction", () => {
+  it.each(["Streameur", "admin", "Sys_tem"])(
+    "%s est ignoré à la lecture du cookie",
+    async (pseudo) => {
+      const codec = createTokenCodec(harness.env.JWT_SECRET ?? "");
+      const token = await codec.sign({
+        audience: "viewer",
+        subject: randomUUID(),
+        tokenId: randomUUID(),
+        ttlSeconds: 600,
+        pseudo,
+      });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/me",
+        headers: { cookie: `${harness.names.viewer}=${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(jsonBody(res).pseudo).toBeNull();
+    },
+  );
 });
