@@ -187,9 +187,14 @@ describe("POST /webhooks/livekit : rejoin avec un jeton périmé", () => {
     });
   });
 
-  it("speaker légitime ou viewer passif : aucune action", async () => {
+  it("speaker légitime (jeton publiant) : aucune action", async () => {
     await backend.store.takeSlot(stageSetKey("main"), viewerId, 600, 8);
     await signedPost(webhookBody("participant_joined", viewerId, true));
+    expect(backend.livekit.updates).toEqual([]);
+    expect(backend.livekit.removals).toEqual([]);
+  });
+
+  it("viewer passif sans parole et jeton passif : aucune action", async () => {
     await signedPost(webhookBody("participant_joined", viewerId, false));
     expect(backend.livekit.updates).toEqual([]);
     expect(backend.livekit.removals).toEqual([]);
@@ -209,5 +214,34 @@ describe("POST /webhooks/livekit : rejoin avec un jeton périmé", () => {
       200,
     );
     expect(backend.sink.join("")).toContain("sfu.join_guard_failed");
+  });
+
+  it("permission absente du webhook et pas de parole : droits retirés (fail-closed)", async () => {
+    await signedPost(webhookBody("participant_joined", viewerId));
+    expect(backend.livekit.updates).toHaveLength(1);
+    expect(backend.livekit.updates[0]?.permission).toMatchObject({ canPublishAudio: false });
+  });
+
+  it("grant accordé alors que le viewer n'était pas au SFU : appliqué à son arrivée", async () => {
+    await backend.store.takeSlot(stageSetKey("main"), viewerId, 600, 8);
+    await signedPost(webhookBody("participant_joined", viewerId, false));
+    expect(backend.livekit.updates).toHaveLength(1);
+    expect(backend.livekit.updates[0]?.permission).toMatchObject({ canPublishAudio: true });
+  });
+
+  it("course avec /api/stage/grant : si le slot apparaît pendant la révocation, le droit est rétabli", async () => {
+    const original = backend.livekit.updateParticipant.bind(backend.livekit);
+    let first = true;
+    backend.livekit.updateParticipant = async (identity, permission) => {
+      const result = await original(identity, permission);
+      if (first) {
+        first = false;
+        await backend.store.takeSlot(stageSetKey("main"), viewerId, 600, 8);
+      }
+      return result;
+    };
+    await signedPost(webhookBody("participant_joined", viewerId, true));
+    const audio = backend.livekit.updates.map((u) => u.permission.canPublishAudio);
+    expect(audio).toEqual([false, true]);
   });
 });

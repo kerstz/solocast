@@ -21,7 +21,7 @@ export interface LiveKitWebhookDeps {
   log: FastifyBaseLogger;
   // Contrôle d'un viewer qui vient de rejoindre le SFU (jeton LiveKit encore valide après un
   // ban ou un retrait de parole). Absent : aucun contrôle.
-  guardViewerJoin?: (identity: string, canPublish: boolean) => Promise<void>;
+  guardViewerJoin?: (identity: string, canPublish: boolean | undefined) => Promise<void>;
 }
 
 export function registerLiveKitWebhookRoutes(app: FastifyInstance, deps: LiveKitWebhookDeps): void {
@@ -76,7 +76,7 @@ async function handleEvent(
         await deps.hub.setStreamerSfuPresent(joined);
       } else {
         if (joined) {
-          await guardJoin(deps, identity, event.participant?.permission?.canPublish === true, log);
+          await guardJoin(deps, identity, event.participant?.permission?.canPublish, log);
         }
         // Speakers et présence renvoyés aux clients après tout changement de participant.
         await deps.hub.refreshPresence();
@@ -89,13 +89,13 @@ async function handleEvent(
 }
 
 // Un jeton LiveKit vit LIVEKIT_TOKEN_TTL_SECONDS et ne se révoque pas : un viewer banni, ou dont
-// la parole a été retirée, pourrait rejoindre le SFU avec l'ancien. Le webhook est le seul point
+// la parole a été retirée (ou accordée entre-temps), pourrait rejoindre le SFU avec l'ancien. Le webhook est le seul point
 // où ce rejoin est visible : on y rejoue le ban et le droit de parole. Un échec du SFU est
 // journalisé sans faire échouer le webhook (LiveKit réessaierait pour rien).
 async function guardJoin(
   deps: LiveKitWebhookDeps,
   identity: string,
-  canPublish: boolean,
+  canPublish: boolean | undefined,
   log: FastifyBaseLogger,
 ): Promise<void> {
   if (deps.guardViewerJoin === undefined) return;
