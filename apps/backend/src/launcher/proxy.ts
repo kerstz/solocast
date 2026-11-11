@@ -29,6 +29,13 @@ function pathOf(url: string | undefined): string {
   return path.replace(/\/{2,}/g, "/").toLowerCase();
 }
 
+// Segments `.` / `..` (y compris encodés, cf. pathOf) : refusés net. Le routage se décide sur le
+// chemin décodé alors que l'amont reçoit l'URL brute : `/rtc/../twirp/…` serait routé vers le
+// SFU puis nettoyé par lui, et sortirait du préfixe `/rtc`.
+function hasDotSegment(path: string): boolean {
+  return path.split("/").some((segment) => segment === "." || segment === "..");
+}
+
 /**
  * Une seule origine devant le site, l'API, le WebSocket du chat et la signalisation LiveKit :
  * c'est ce qui fait tenir le cookie de session (SameSite=Lax) et l'allowlist CORS à travers un
@@ -37,7 +44,7 @@ function pathOf(url: string | undefined): string {
 export function createProxy(targets: ProxyTargets): Server {
   const targetFor = (url: string | undefined): Upstream | null => {
     const path = pathOf(url);
-    if (isBlocked(path)) return null;
+    if (isBlocked(path) || hasDotSegment(path)) return null;
     if (targets.livekit !== undefined && (path === "/rtc" || path.startsWith("/rtc/"))) {
       return targets.livekit;
     }
@@ -88,6 +95,12 @@ export function createProxy(targets: ProxyTargets): Server {
   server.maxConnections = 1_024;
 
   server.on("upgrade", (req, socket: Socket, head) => {
+    // Node retire son propre écouteur d'erreur au moment de l'upgrade : sans celui-ci, un client
+    // qui coupe (RST) avant la réponse de l'amont lèverait une exception non rattrapée et
+    // emporterait tout le processus (donc le studio) depuis le tunnel public.
+    socket.on("error", () => {
+      socket.destroy();
+    });
     const target = targetFor(req.url);
     if (target === null) {
       socket.destroy();
@@ -100,7 +113,17 @@ export function createProxy(targets: ProxyTargets): Server {
       path: req.url,
       headers: req.headers,
     });
+    let upgraded = false;
+    // Client parti avant la réponse de l'amont : on ne retient pas la requête amont.
+    socket.once("close", () => {
+      if (!upgraded) upstream.destroy();
+    });
     upstream.on("upgrade", (upstreamRes, upstreamSocket, upstreamHead) => {
+      upgraded = true;
+      if (socket.destroyed) {
+        upstreamSocket.destroy();
+        return;
+      }
       const headers = Object.entries(upstreamRes.headers).flatMap(([key, value]) =>
         (Array.isArray(value) ? value : [value]).map((v) => `${key}: ${String(v)}`),
       );
