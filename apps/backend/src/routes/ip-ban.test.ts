@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createIpBans } from "../moderation/ip-ban.js";
+import { banAddressOf, createIpBans } from "../moderation/ip-ban.js";
 import { MemoryKeyValueStore } from "../state/key-value-store.js";
 import { cookieFrom, createHarness, jsonBody, type Harness } from "../test/harness.js";
 
@@ -134,5 +134,31 @@ describe("createIpBans", () => {
     await a.banViewerIp("v1", undefined);
     expect(await a.isBanned(ATTACKER_IP)).toBe(true);
     expect(await b.isBanned(ATTACKER_IP)).toBe(false);
+  });
+});
+
+describe("banAddressOf", () => {
+  it("IPv4 inchangée, IPv4 mappée ramenée à l'IPv4", () => {
+    expect(banAddressOf("203.0.113.50")).toBe("203.0.113.50");
+    expect(banAddressOf("::ffff:203.0.113.50")).toBe("203.0.113.50");
+  });
+
+  it("IPv6 : toutes les adresses d'un même /64 donnent la même clé, quelle que soit l'écriture", () => {
+    const key = banAddressOf("2001:db8:1:2:aaaa:bbbb:cccc:dddd");
+    expect(key).toBe("2001:0db8:0001:0002::/64");
+    expect(banAddressOf("2001:DB8:1:2::1")).toBe(key);
+    expect(banAddressOf("2001:db8:1:2:0:0:0:ffff")).toBe(key);
+    expect(banAddressOf("2001:db8:1:2:1234::5%eth0")).toBe(key);
+    expect(banAddressOf("2001:db8:1:3::1")).not.toBe(key);
+    expect(banAddressOf("2001:db8::1")).toBe("2001:0db8:0000:0000::/64");
+  });
+
+  it("un banni qui change d'adresse dans son /64 IPv6 reste refusé", async () => {
+    harness = await createHarness();
+    const first = await me(harness, "2001:db8:1:2::10");
+    const viewerId = String(jsonBody(first).viewerId);
+    expect((await ban(harness, viewerId)).statusCode).toBe(204);
+    expect((await me(harness, "2001:db8:1:2:abcd:ef01:2345:6789")).statusCode).toBe(403);
+    expect((await me(harness, "2001:db8:1:9::10")).statusCode).toBe(200);
   });
 });

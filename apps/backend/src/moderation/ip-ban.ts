@@ -1,10 +1,39 @@
 import { createHmac } from "node:crypto";
+import { isIPv6 } from "node:net";
 import { isLoopbackAddress } from "../http/local-host.js";
 import type { KeyValueStore } from "../state/key-value-store.js";
 
 // Empreinte IP : HMAC-SHA256 (clé dérivée de JWT_SECRET), tronquée. L'IP en clair n'est jamais
 // stockée ; sans le secret, l'empreinte ne se renverse pas par énumération des 2^32 adresses.
 const FINGERPRINT_HEX_LENGTH = 32;
+
+/**
+ * Clé de ban d'une adresse. IPv4 : l'adresse. IPv6 : le préfixe /64, la plus petite allocation
+ * d'un abonné (un client en reçoit des milliards de milliards) : bannir l'adresse exacte
+ * serait contourné en changeant d'adresse (extensions de vie privée, rotation du suffixe).
+ */
+export function banAddressOf(raw: string): string {
+  const ip = raw
+    .toLowerCase()
+    .replace(/%.*$/, "")
+    .replace(/^::ffff:/, "");
+  if (!isIPv6(ip)) return ip;
+  const compressed = ip.includes("::");
+  const [head = "", tail = ""] = ip.split("::");
+  const front = head === "" ? [] : head.split(":");
+  const back = tail === "" ? [] : tail.split(":");
+  const groups = compressed
+    ? [
+        ...front,
+        ...Array.from({ length: Math.max(0, 8 - front.length - back.length) }, () => "0"),
+        ...back,
+      ]
+    : ip.split(":");
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.padStart(4, "0"))
+    .join(":")}::/64`;
+}
 
 const viewerIpKey = (viewerId: string): string => `viewerip:${viewerId}`;
 const ipBanKey = (fingerprint: string): string => `banip:${fingerprint}`;
@@ -32,7 +61,7 @@ export function createIpBans(deps: {
   const hmacKey = createHmac("sha256", deps.secret).update("solocast:ip-fingerprint:v1").digest();
   const fingerprint = (ip: string): string =>
     createHmac("sha256", hmacKey)
-      .update(ip.toLowerCase().replace(/^::ffff:/, ""))
+      .update(banAddressOf(ip))
       .digest("hex")
       .slice(0, FINGERPRINT_HEX_LENGTH);
   // Cette machine (lanceur, streameur) n'est jamais bannie par IP : elle porte aussi le studio.
