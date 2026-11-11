@@ -5,15 +5,19 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("MemoryKeyValueStore : balayage des clés expirées", () => {
-  it("les clés expirées jamais relues sont retirées au fil des écritures", async () => {
+describe("MemoryKeyValueStore : balayage périodique", () => {
+  it("retire les clés et les places expirées jamais relues, garde les vivantes", async () => {
     vi.useFakeTimers();
     const store = new MemoryKeyValueStore();
     for (let i = 0; i < 500; i += 1) await store.set(`viewerip:${String(i)}`, "x", 10);
-    vi.advanceTimersByTime(11_000);
-    for (let i = 0; i < 499; i += 1) await store.set(`keep:${String(i)}`, "x", 3_600);
-    expect(store.size).toBe(999);
-    await store.set("trigger", "x", 3_600);
-    expect(store.size).toBe(500);
+    await store.set("keep", "x", 3_600);
+    await store.takeSlot("stage:old", "a", 10, 8);
+    await store.takeSlot("stage:live", "b", 3_600, 8);
+    expect(store.size).toBe(501);
+    expect(store.slotSetCount).toBe(2);
+    await vi.advanceTimersByTimeAsync(MemoryKeyValueStore.SWEEP_INTERVAL_MS + 1);
+    expect(store.size).toBe(1);
+    expect(store.slotSetCount).toBe(1);
+    expect(await store.hasSlot("stage:live", "b")).toBe(true);
   });
 });
