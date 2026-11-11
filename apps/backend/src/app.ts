@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
+import { ViewerIdSchema } from "@solocast/shared";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Redis } from "ioredis";
 import type { Writable } from "node:stream";
@@ -11,7 +12,11 @@ import { createAuthMiddleware } from "./auth/middleware.js";
 import { createStreamerAuth } from "./auth/streamer-auth.js";
 import { createStudioKeyVerifier } from "./auth/studio-key.js";
 import { createTokenCodec } from "./auth/tokens.js";
-import { createViewerIdentity, VIEWER_SESSION_TTL_SECONDS } from "./auth/viewer-identity.js";
+import {
+  banKey,
+  createViewerIdentity,
+  VIEWER_SESSION_TTL_SECONDS,
+} from "./auth/viewer-identity.js";
 import { createChatHub } from "./chat/hub.js";
 import { createMemoryChatServices, type ChatServices } from "./chat/services.js";
 import type { AppConfig } from "./config.js";
@@ -22,6 +27,7 @@ import { createIpBans } from "./moderation/ip-ban.js";
 import type { AppControl } from "./app-control.js";
 import { registerAppRoutes } from "./routes/app.js";
 import { createLiveKitGateway, type LiveKitGateway } from "./livekit/gateway.js";
+import { viewerMediaGrant } from "./livekit/grants.js";
 import { createViewerCapacity } from "./room/viewer-capacity.js";
 import { registerMeRoutes } from "./routes/me.js";
 import { registerModerationRoutes } from "./routes/moderation.js";
@@ -337,6 +343,19 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       new WebhookReceiver(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET),
     hub,
     log: app.log,
+    guardViewerJoin: async (identity, canPublish) => {
+      // Seules les identités viewer (UUID émis par le serveur) sont concernées.
+      if (!ViewerIdSchema.safeParse(identity).success) return;
+      if (await store.exists(banKey(identity))) {
+        await livekit.removeParticipant(identity);
+        app.log.info({ event: "sfu.banned_rejoin_removed" }, "Viewer banni retiré du SFU");
+        return;
+      }
+      if (canPublish && !(await stage.isSpeaker(identity))) {
+        await livekit.updateParticipant(identity, viewerMediaGrant(identity, false));
+        app.log.info({ event: "sfu.stale_publish_revoked" }, "Droit de publier périmé retiré");
+      }
+    },
   });
 
   // Front exporté : les chemins API/WS/webhooks sont déjà enregistrés plus haut, tout le reste

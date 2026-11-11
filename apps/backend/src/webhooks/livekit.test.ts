@@ -9,6 +9,8 @@ import { loadConfig } from "../config.js";
 import { createSharedBackend, type SharedBackend } from "../test/ws-harness.js";
 import { STREAMER_IDENTITY } from "../livekit/grants.js";
 import { SFU_STREAMER_LINK_ID } from "../chat/hub.js";
+import { banKey } from "../auth/viewer-identity.js";
+import { stageSetKey } from "../stage/stage-registry.js";
 
 // Signature LiveKit : JWT HS256 (iss = clé API, exp requis) portant sha256 = base64(SHA-256(corps)).
 async function signedAuthorization(
@@ -53,8 +55,26 @@ afterEach(async () => {
   await app.close();
 });
 
-const webhookBody = (event: string, identity: string): string =>
-  JSON.stringify({ event, room: { name: "main" }, participant: { identity } });
+const webhookBody = (event: string, identity: string, canPublish?: boolean): string =>
+  JSON.stringify({
+    event,
+    room: { name: "main" },
+    participant: {
+      identity,
+      ...(canPublish === undefined ? {} : { permission: { canPublish } }),
+    },
+  });
+
+async function signedPost(body: string) {
+  return post(
+    body,
+    await signedAuthorization(
+      body,
+      backend.env.LIVEKIT_API_SECRET ?? "",
+      backend.env.LIVEKIT_API_KEY ?? "",
+    ),
+  );
+}
 
 async function post(body: string, authorization: string | undefined) {
   return app.inject({
@@ -141,5 +161,53 @@ describe("POST /webhooks/livekit : présence streameur côté SFU", () => {
     );
     expect((await post(body, auth)).statusCode).toBe(200);
     expect(await chat.state.hasStreamerLink(SFU_STREAMER_LINK_ID)).toBe(false);
+  });
+});
+
+describe("POST /webhooks/livekit : rejoin avec un jeton périmé", () => {
+  const viewerId = "6f1c2a3e-8b4d-4c5e-9f60-718293a4b5c6";
+
+  it("viewer banni qui rejoint le SFU avec son ancien jeton : retiré de la room", async () => {
+    await backend.store.set(banKey(viewerId), "1", null);
+    expect((await signedPost(webhookBody("participant_joined", viewerId, false))).statusCode).toBe(
+      200,
+    );
+    expect(backend.livekit.removals).toEqual([viewerId]);
+  });
+
+  it("viewer sans droit de parole qui rejoint avec un jeton publiant : droits retirés", async () => {
+    expect((await signedPost(webhookBody("participant_joined", viewerId, true))).statusCode).toBe(
+      200,
+    );
+    expect(backend.livekit.removals).toEqual([]);
+    expect(backend.livekit.updates).toHaveLength(1);
+    expect(backend.livekit.updates[0]).toMatchObject({
+      identity: viewerId,
+      permission: { canPublishAudio: false, canPublishVideo: false },
+    });
+  });
+
+  it("speaker légitime ou viewer passif : aucune action", async () => {
+    await backend.store.takeSlot(stageSetKey("main"), viewerId, 600, 8);
+    await signedPost(webhookBody("participant_joined", viewerId, true));
+    await signedPost(webhookBody("participant_joined", viewerId, false));
+    expect(backend.livekit.updates).toEqual([]);
+    expect(backend.livekit.removals).toEqual([]);
+  });
+
+  it("identité non viewer (ingress, inconnue) : ignorée", async () => {
+    await signedPost(webhookBody("participant_joined", "ingress-abc", true));
+    expect(backend.livekit.updates).toEqual([]);
+    expect(backend.livekit.removals).toEqual([]);
+  });
+
+  it("SFU en panne pendant le contrôle : le webhook répond 200 et l'échec est journalisé", async () => {
+    await backend.store.set(banKey(viewerId), "1", null);
+    backend.livekit.participantConnected = true;
+    backend.livekit.removeParticipant = () => Promise.reject(new Error("sfu down"));
+    expect((await signedPost(webhookBody("participant_joined", viewerId, false))).statusCode).toBe(
+      200,
+    );
+    expect(backend.sink.join("")).toContain("sfu.join_guard_failed");
   });
 });

@@ -7,7 +7,7 @@ export const LIVEKIT_WEBHOOK_BODY_LIMIT = 64 * 1024;
 
 export interface LiveKitWebhookEvent {
   event: string;
-  participant?: { identity?: string };
+  participant?: { identity?: string; permission?: { canPublish?: boolean } };
 }
 
 // Port de vérification : WebhookReceiver de livekit-server-sdk en production.
@@ -19,6 +19,9 @@ export interface LiveKitWebhookDeps {
   verifier: LiveKitWebhookVerifier;
   hub: ChatHub;
   log: FastifyBaseLogger;
+  // Contrôle d'un viewer qui vient de rejoindre le SFU (jeton LiveKit encore valide après un
+  // ban ou un retrait de parole). Absent : aucun contrôle.
+  guardViewerJoin?: (identity: string, canPublish: boolean) => Promise<void>;
 }
 
 export function registerLiveKitWebhookRoutes(app: FastifyInstance, deps: LiveKitWebhookDeps): void {
@@ -72,6 +75,9 @@ async function handleEvent(
       if (identity === STREAMER_IDENTITY) {
         await deps.hub.setStreamerSfuPresent(joined);
       } else {
+        if (joined) {
+          await guardJoin(deps, identity, event.participant?.permission?.canPublish === true, log);
+        }
         // Speakers et présence renvoyés aux clients après tout changement de participant.
         await deps.hub.refreshPresence();
       }
@@ -79,5 +85,24 @@ async function handleEvent(
     }
     default:
       return;
+  }
+}
+
+// Un jeton LiveKit vit LIVEKIT_TOKEN_TTL_SECONDS et ne se révoque pas : un viewer banni, ou dont
+// la parole a été retirée, pourrait rejoindre le SFU avec l'ancien. Le webhook est le seul point
+// où ce rejoin est visible : on y rejoue le ban et le droit de parole. Un échec du SFU est
+// journalisé sans faire échouer le webhook (LiveKit réessaierait pour rien).
+async function guardJoin(
+  deps: LiveKitWebhookDeps,
+  identity: string,
+  canPublish: boolean,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  if (deps.guardViewerJoin === undefined) return;
+  try {
+    await deps.guardViewerJoin(identity, canPublish);
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    log.error({ event: "sfu.join_guard_failed", errorName }, "Contrôle du rejoin SFU échoué");
   }
 }
