@@ -8,7 +8,7 @@ import { banKey, type ViewerIdentityService } from "../auth/viewer-identity.js";
 import type { ClientIpResolver } from "../http/client-ip.js";
 import { HttpError } from "../http/errors.js";
 import { isLoopbackAddress } from "../http/local-host.js";
-import type { IpBans } from "../moderation/ip-ban.js";
+import { banAddressOf, type IpBans } from "../moderation/ip-ban.js";
 import type { ViewerCapacity } from "../room/viewer-capacity.js";
 import type { KeyValueStore } from "../state/key-value-store.js";
 
@@ -87,7 +87,7 @@ async function authenticate(
     throw new HttpError(403, "viewer_banned", "Access denied.");
   }
   // Refus rapide avant upgrade ; le comptage qui fait foi a lieu à l'ouverture de la socket.
-  if (limitedIp(ip) && connections.full(ip)) {
+  if (limitedIp(ip) && connections.full(banAddressOf(ip))) {
     throw new HttpError(429, "too_many_connections", "Too many connections from this address.");
   }
   await deps.ipBans.remember(identity.viewerId, ip);
@@ -159,13 +159,13 @@ export async function registerChatGateway(
       }
       const ip = request.chatClientIp ?? "";
       if (identity.role === "viewer" && limitedIp(ip)) {
-        if (!connections.acquire(ip)) {
+        if (!connections.acquire(banAddressOf(ip))) {
           request.log.info({ event: "ws.too_many_connections" }, "Connexion refusée : plafond IP");
           socket.close(TOO_MANY_CONNECTIONS_CLOSE_CODE, "Too many connections.");
           return;
         }
         socket.once("close", () => {
-          connections.release(ip);
+          connections.release(banAddressOf(ip));
         });
       }
       alive.set(socket, true);

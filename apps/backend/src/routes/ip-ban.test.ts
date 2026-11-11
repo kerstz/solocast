@@ -143,6 +143,13 @@ describe("banAddressOf", () => {
     expect(banAddressOf("::ffff:203.0.113.50")).toBe("203.0.113.50");
   });
 
+  it("IPv4 mappée en hexadécimal ou en forme longue : ramenée à l'IPv4, pas au seau ::/64", () => {
+    expect(banAddressOf("::ffff:cb00:7132")).toBe("203.0.113.50");
+    expect(banAddressOf("::FFFF:CB00:7132")).toBe("203.0.113.50");
+    expect(banAddressOf("0:0:0:0:0:ffff:cb00:7132")).toBe("203.0.113.50");
+    expect(banAddressOf("::1")).toBe("0000:0000:0000:0000::/64");
+  });
+
   it("IPv6 : toutes les adresses d'un même /64 donnent la même clé, quelle que soit l'écriture", () => {
     const key = banAddressOf("2001:db8:1:2:aaaa:bbbb:cccc:dddd");
     expect(key).toBe("2001:0db8:0001:0002::/64");

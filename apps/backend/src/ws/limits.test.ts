@@ -64,6 +64,21 @@ describe("plafond de connexions WebSocket par IP", () => {
     await elsewhere.waitFor((m) => m.type === "chat:history");
   });
 
+  it("compte le plafond par /64 : un autre suffixe IPv6 du même préfixe est refusé", async () => {
+    backend = createSharedBackend(proxiedEnv({ WS_MAX_CONNECTIONS_PER_IP: "1" }));
+    instance = await startInstance(backend);
+    const first = await ChatClient.connect(
+      instance.port,
+      headersFor(await newViewerCookie("alice"), "2001:db8:5:6::1"),
+    );
+    clients.push(first);
+    await first.waitFor((m) => m.type === "chat:history");
+    const other = await newViewerCookie("bobby");
+    expect(await ChatClient.refused(instance.port, headersFor(other, "2001:db8:5:6::abcd"))).toBe(
+      429,
+    );
+  });
+
   it("libère la place IP à la fermeture de la socket", async () => {
     backend = createSharedBackend(proxiedEnv({ WS_MAX_CONNECTIONS_PER_IP: "1" }));
     instance = await startInstance(backend);

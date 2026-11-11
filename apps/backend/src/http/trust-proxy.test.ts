@@ -53,3 +53,22 @@ describe("TRUST_PROXY : adresse client", () => {
     expect((await me(harness, "198.51.100.1, 203.0.113.99")).statusCode).toBe(200);
   });
 });
+
+describe("quota par IP : préfixe /64 en IPv6", () => {
+  it("changer de suffixe IPv6 dans le même /64 ne donne pas un nouveau quota", async () => {
+    harness = await createHarness(proxied({ STUDIO_RATE_LIMIT_MAX: "2" }));
+    const open = (suffix: string, prefix = "2001:db8:1:2") =>
+      harness?.app.inject({
+        method: "POST",
+        url: "/api/studio/open",
+        remoteAddress: "10.0.0.2",
+        headers: { "x-forwarded-for": `${prefix}::${suffix}` },
+        payload: { key: "mauvaise-cle" },
+      });
+    expect((await open("1"))?.statusCode).toBe(401);
+    expect((await open("2"))?.statusCode).toBe(401);
+    expect((await open("3"))?.statusCode).toBe(429);
+    // Autre /64 : quota à part.
+    expect((await open("1", "2001:db8:1:9"))?.statusCode).toBe(401);
+  });
+});

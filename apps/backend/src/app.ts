@@ -23,7 +23,7 @@ import type { AppConfig } from "./config.js";
 import { createClientIpResolver } from "./http/client-ip.js";
 import { HttpError, registerErrorHandlers } from "./http/errors.js";
 import { isLocalRequest, isLoopbackAddress } from "./http/local-host.js";
-import { createIpBans } from "./moderation/ip-ban.js";
+import { banAddressOf, createIpBans } from "./moderation/ip-ban.js";
 import type { AppControl } from "./app-control.js";
 import { registerAppRoutes } from "./routes/app.js";
 import { createLiveKitGateway, type LiveKitGateway } from "./livekit/gateway.js";
@@ -224,7 +224,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   await app.register(rateLimit, {
     global: false,
     // Derrière le tunnel : `cf-connecting-ip` (cf. http/client-ip.ts), sinon request.ip.
-    keyGenerator: clientIp,
+    // /64 en IPv6 : changer de suffixe ne donne pas un nouveau quota.
+    keyGenerator: (request) => banAddressOf(clientIp(request)),
     ...(options.redis === undefined ? {} : { redis: options.redis }),
   });
 
@@ -356,10 +357,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         app.log.info({ event: "sfu.banned_rejoin_removed" }, "Viewer banni retiré du SFU");
         return;
       }
-      if (canPublish && !(await stage.isSpeaker(identity))) {
-        await livekit.updateParticipant(identity, viewerMediaGrant(identity, false));
-        app.log.info({ event: "sfu.stale_publish_revoked" }, "Droit de publier périmé retiré");
+      // État voulu = le store (grant de parole). `canPublish` absent du webhook : état inconnu,
+      // on réapplique (idempotent) plutôt que de laisser passer (fail-closed).
+      const speaker = await stage.isSpeaker(identity);
+      if (canPublish === speaker) return;
+      await livekit.updateParticipant(identity, viewerMediaGrant(identity, speaker));
+      // Course avec /api/stage/grant : le slot a pu être posé pendant la mise à jour.
+      if (!speaker && (await stage.isSpeaker(identity))) {
+        await livekit.updateParticipant(identity, viewerMediaGrant(identity, true));
       }
+      app.log.info({ event: "sfu.join_permission_synced", speaker }, "Droits SFU resynchronisés");
     },
   });
 

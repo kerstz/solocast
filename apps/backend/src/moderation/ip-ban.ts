@@ -16,7 +16,7 @@ export function banAddressOf(raw: string): string {
   const ip = raw
     .toLowerCase()
     .replace(/%.*$/, "")
-    .replace(/^::ffff:/, "");
+    .replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, "$1");
   if (!isIPv6(ip)) return ip;
   const compressed = ip.includes("::");
   const [head = "", tail = ""] = ip.split("::");
@@ -29,6 +29,17 @@ export function banAddressOf(raw: string): string {
         ...back,
       ]
     : ip.split(":");
+  // IPv4 mappée écrite en hexadécimal (::ffff:cb00:7101) ou en forme longue : c'est une IPv4.
+  const mapped = groups.slice(0, 5).every((group) => /^0+$/.test(group)) && groups[5] === "ffff";
+  if (
+    mapped &&
+    groups.length === 8 &&
+    groups.slice(6).every((group) => /^[0-9a-f]{1,4}$/.test(group))
+  ) {
+    const hi = Number.parseInt(groups[6] ?? "0", 16);
+    const lo = Number.parseInt(groups[7] ?? "0", 16);
+    return `${String(hi >> 8)}.${String(hi & 255)}.${String(lo >> 8)}.${String(lo & 255)}`;
+  }
   return `${groups
     .slice(0, 4)
     .map((group) => group.padStart(4, "0"))
